@@ -18,22 +18,27 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const { data, error: loginError } = await supabase.auth.signInWithPassword({
+      // Sign in user
+      const { data: authData, error: loginError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (loginError) {
-        setError(loginError.message);
-        setLoading(false);
-        return;
-      }
+      if (loginError) throw loginError;
+      if (!authData.user) throw new Error("User not found");
 
-      // Wait briefly for Supabase session cookies to settle
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      // Fetch role from profiles table
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", authData.user.id)
+        .single();
 
-      // Redirect to dashboard
-      router.push("/home");
+      if (profileError) throw profileError;
+
+      // Redirect based on role
+      if (profile?.role === "admin") router.push("/admin");
+      else router.push("/student");
     } catch (err: any) {
       console.error("Login error:", err);
       setError(err.message || "An unexpected error occurred");
@@ -43,52 +48,42 @@ export default function LoginPage() {
   };
 
   const inputClass =
-    "w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-400 focus:border-transparent outline-none transition-all text-gray-900 placeholder-gray-400";
+    "w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-gray-900 placeholder-gray-400";
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-tr from-amber-50 to-white px-4">
-      <div className="flex flex-col md:flex-row bg-white/90 backdrop-blur-md shadow-2xl rounded-3xl overflow-hidden max-w-5xl w-full">
-
-        {/* LEFT PANEL */}
-        <div className="w-full md:w-1/2 bg-gradient-to-br from-amber-100 to-amber-200 p-12 flex flex-col justify-center">
-          <div className="flex items-center mb-6">
-            <div className="bg-gradient-to-r from-green-600 to-yellow-500 text-white font-bold rounded-xl w-14 h-14 flex items-center justify-center text-lg shadow-md">
-              GC
-            </div>
-            <div className="ml-4">
-              <h1 className="text-2xl font-bold text-green-800">Gordon College</h1>
-              <p className="text-sm text-yellow-700 font-semibold mt-1">
-                Attendance Tracker
-              </p>
-            </div>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center px-4 py-10">
+      <div className="bg-white/80 backdrop-blur-xl shadow-2xl max-w-4xl w-full rounded-3xl overflow-hidden flex flex-col md:flex-row">
+        
+        {/* LEFT SECTION */}
+        <div className="w-full md:w-1/2 bg-blue-600 p-10 text-white flex flex-col justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Attendance Tracker</h1>
+            <p className="opacity-90 text-sm mt-2">
+              Efficient and accurate attendance monitoring for students and staff.
+            </p>
           </div>
 
-          <p className="text-gray-800 text-sm leading-relaxed mt-2">
-            Track your attendance efficiently with the new{" "}
-            <span className="text-green-700 font-semibold">GC Attendance Tracker</span>.
-          </p>
-          <p className="mt-2 text-sm text-gray-800">
-            Manage logs, monitor presence, and stay updated with a clean and intuitive interface.
-          </p>
+          <div className="mt-10">
+            <p className="text-lg font-medium">Digital Attendance System</p>
+            <p className="text-sm opacity-80 mt-1 leading-relaxed">
+              Login now and access your attendance portal with a clean and intuitive interface.
+            </p>
+          </div>
         </div>
 
-        {/* RIGHT PANEL */}
-        <div className="w-full md:w-1/2 p-12 flex flex-col justify-center">
-          <h2 className="text-3xl font-semibold text-center mb-3 text-green-700">
+        {/* RIGHT SECTION */}
+        <div className="w-full md:w-1/2 p-10">
+          <h2 className="text-2xl font-semibold text-center text-blue-700 mb-6">
             Welcome Back
           </h2>
-          <p className="text-center text-gray-600 mb-4">
-            Enter your credentials to access your account
-          </p>
 
           {error && (
-            <p className="text-red-600 text-sm text-center mb-4 bg-red-100 py-2 px-3 rounded-xl">
+            <p className="text-red-600 text-sm mb-4 text-center bg-red-100 py-2 px-3 rounded-lg">
               {error}
             </p>
           )}
 
           <form className="space-y-5" onSubmit={handleLogin}>
-            {/* Email */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
               <input
@@ -101,7 +96,6 @@ export default function LoginPage() {
               />
             </div>
 
-            {/* Password */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
               <div className="relative">
@@ -123,26 +117,17 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Submit */}
             <button
               type="submit"
               disabled={loading}
-              className={`w-full bg-gradient-to-r from-green-600 to-yellow-500 text-white font-semibold py-3 rounded-xl shadow-lg transition transform ${
-                loading
-                  ? "opacity-70 cursor-not-allowed"
-                  : "hover:scale-105 hover:opacity-95"
-              }`}
+              className="w-full bg-blue-600 text-white font-semibold py-3 rounded-xl shadow-lg hover:bg-blue-700 transition transform hover:scale-[1.02]"
             >
               {loading ? "Signing in..." : "Sign In"}
             </button>
 
-            {/* Register Link */}
-            <p className="text-center text-sm text-gray-600 mt-2">
+            <p className="text-center text-sm text-gray-600">
               Don’t have an account?{" "}
-              <Link
-                href="/register"
-                className="text-green-600 font-medium hover:underline"
-              >
+              <Link href="/register" className="text-blue-600 font-medium hover:underline">
                 Register here
               </Link>
             </p>
