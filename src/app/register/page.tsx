@@ -1,6 +1,7 @@
 "use client";
+
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 
 export default function RegisterPage() {
@@ -16,26 +17,36 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [departments, setDepartments] = useState([]);
 
+  // Fetch departments
+  useEffect(() => {
+    const fetchDepartments = async () => {
+      const { data, error } = await supabase
+        .from("departments")
+        .select("id, name")
+        .order("name", { ascending: true });
+
+      if (!error) setDepartments(data);
+    };
+    fetchDepartments();
+  }, []);
+
+  // Handle form change
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  // Strong password validation
   const validatePassword = (password: string) => {
-    const minLength = /.{8,}/;
-    const upper = /[A-Z]/;
-    const lower = /[a-z]/;
-    const number = /[0-9]/;
-    const special = /[!@#$%^&*(),.?":{}|<>]/;
-
     return (
-      minLength.test(password) &&
-      upper.test(password) &&
-      lower.test(password) &&
-      number.test(password) &&
-      special.test(password)
+      /.{8,}/.test(password) &&
+      /[A-Z]/.test(password) &&
+      /[a-z]/.test(password) &&
+      /[0-9]/.test(password) &&
+      /[!@#$%^&*(),.?":{}|<>]/.test(password)
     );
   };
 
@@ -53,7 +64,7 @@ export default function RegisterPage() {
     }
 
     try {
-      // Sign up user with Supabase
+      // 1️⃣ Supabase Auth Signup
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
@@ -62,26 +73,26 @@ export default function RegisterPage() {
       if (authError) throw authError;
 
       const userId = authData.user?.id;
-      if (!userId) throw new Error("User ID not found after signup");
+      if (!userId) throw new Error("Signup failed. Please try again.");
 
-      // Insert profile data into 'profiles' table
-      const { error: dbError } = await supabase.from("profiles").insert({
+      // 2️⃣ Save profile in database
+      const { error: profileError } = await supabase.from("profiles").insert({
         id: userId,
         first_name: formData.first_name,
         last_name: formData.last_name,
         middle_initial: formData.middle_initial,
-        department: formData.department,
+        department_id: formData.department,
         email: formData.email,
-        role: "user",
-        created_at: new Date().toISOString(),
+        role: "student", // default role
       });
 
-      if (dbError) throw dbError;
+      if (profileError) throw profileError;
 
       alert(
-        "Registration successful! Please check your email to confirm your account."
+        "Registration successful! Check your email to confirm your account."
       );
 
+      // Reset form
       setFormData({
         first_name: "",
         last_name: "",
@@ -90,22 +101,23 @@ export default function RegisterPage() {
         email: "",
         password: "",
       });
+
     } catch (err: any) {
-      console.error("Error registering user:", err);
-      setError(err.message || "Registration failed.");
+      console.error("Registration error:", err);
+      setError(err.message || "Registration failed. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
   const inputClass =
-    "w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-gray-900 placeholder-gray-400";
+    "w-full p-3 border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition text-gray-900 placeholder-gray-400";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center px-4 py-10">
       <div className="bg-white/80 backdrop-blur-xl shadow-2xl max-w-4xl w-full rounded-3xl overflow-hidden flex flex-col md:flex-row">
-        
-        {/* LEFT SECTION */}
+
+        {/* LEFT SIDE */}
         <div className="w-full md:w-1/2 bg-blue-600 p-10 text-white flex flex-col justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Attendance Tracker</h1>
@@ -117,12 +129,12 @@ export default function RegisterPage() {
           <div className="mt-10">
             <p className="text-lg font-medium">Digital Attendance System</p>
             <p className="text-sm opacity-80 mt-1 leading-relaxed">
-              Register now and gain access to our attendance monitoring portal.
+              Create an account and start using our smart attendance monitoring platform.
             </p>
           </div>
         </div>
 
-        {/* RIGHT SECTION */}
+        {/* RIGHT SIDE */}
         <div className="w-full md:w-1/2 p-10">
           <h2 className="text-2xl font-semibold text-center text-blue-700 mb-6">
             Create Your Account
@@ -135,32 +147,35 @@ export default function RegisterPage() {
           )}
 
           <form className="space-y-5" onSubmit={handleRegister}>
+            {/* NAME FIELDS */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <input
                 name="first_name"
                 placeholder="First Name"
                 className={inputClass}
-                onChange={handleChange}
                 value={formData.first_name}
+                onChange={handleChange}
                 required
               />
+
               <input
                 name="last_name"
                 placeholder="Last Name"
                 className={inputClass}
-                onChange={handleChange}
                 value={formData.last_name}
+                onChange={handleChange}
                 required
               />
             </div>
 
+            {/* MIDDLE + DEPARTMENT */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <input
                 name="middle_initial"
-                placeholder="Middle Initial"
+                placeholder="Middle Initial (Optional)"
                 className={inputClass}
-                onChange={handleChange}
                 value={formData.middle_initial}
+                onChange={handleChange}
               />
 
               <select
@@ -168,37 +183,37 @@ export default function RegisterPage() {
                 value={formData.department}
                 onChange={handleChange}
                 required
-                className={`${inputClass} bg-white`}
+                className={`${inputClass}`}
               >
-                <option value="" disabled>
-                  Select Department
-                </option>
-                <option value="CCS">CCS</option>
-                <option value="CBA">CBA</option>
-                <option value="CHTM">CHTM</option>
-                <option value="CEAS">CEAS</option>
-                <option value="CAHS">CAHS</option>
+                <option value="" disabled>Select Department</option>
+                {departments.map((d: any) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
               </select>
             </div>
 
+            {/* EMAIL */}
             <input
               name="email"
               type="email"
               placeholder="Email"
               className={inputClass}
-              onChange={handleChange}
               value={formData.email}
+              onChange={handleChange}
               required
             />
 
+            {/* PASSWORD */}
             <div className="relative">
               <input
                 name="password"
                 type={showPassword ? "text" : "password"}
                 placeholder="Password"
                 className={inputClass}
-                onChange={handleChange}
                 value={formData.password}
+                onChange={handleChange}
                 required
               />
               <button
@@ -210,6 +225,7 @@ export default function RegisterPage() {
               </button>
             </div>
 
+            {/* SUBMIT */}
             <button
               type="submit"
               disabled={loading}

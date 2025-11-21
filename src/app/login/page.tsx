@@ -37,7 +37,7 @@ export default function LoginPage() {
       if (profileError) throw profileError;
 
       // Redirect based on role
-      if (profile?.role === "admin") router.push("/admin");
+      if (profile?.role === "teacher") router.push("/teacher");
       else router.push("/student");
     } catch (err: any) {
       console.error("Login error:", err);
