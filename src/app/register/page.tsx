@@ -10,6 +10,8 @@ export default function RegisterPage() {
     last_name: "",
     middle_initial: "",
     department: "",
+    course: "",
+    year_level: "",
     email: "",
     password: "",
   });
@@ -18,6 +20,7 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [departments, setDepartments] = useState([]);
+  const [courses, setCourses] = useState([]);
 
   // Fetch departments
   useEffect(() => {
@@ -31,6 +34,22 @@ export default function RegisterPage() {
     };
     fetchDepartments();
   }, []);
+
+  // Fetch courses when department changes
+  useEffect(() => {
+    if (!formData.department) return;
+
+    const fetchCourses = async () => {
+      const { data, error } = await supabase
+        .from("courses")
+        .select("id, name")
+        .eq("department_id", formData.department)
+        .order("name", { ascending: true });
+
+      if (!error) setCourses(data);
+    };
+    fetchCourses();
+  }, [formData.department]);
 
   // Handle form change
   const handleChange = (
@@ -75,22 +94,20 @@ export default function RegisterPage() {
       const userId = authData.user?.id;
       if (!userId) throw new Error("Signup failed. Please try again.");
 
-      // 2️⃣ Save profile in database
-      const { error: profileError } = await supabase.from("profiles").insert({
+      // 2️⃣ Insert into students table
+      const { error: studentError } = await supabase.from("students").insert({
         id: userId,
         first_name: formData.first_name,
         last_name: formData.last_name,
-        middle_initial: formData.middle_initial,
-        department_id: formData.department,
         email: formData.email,
-        role: "student", // default role
+        department_id: formData.department,
+        course_id: formData.course,
+        year_level: formData.year_level,
       });
 
-      if (profileError) throw profileError;
+      if (studentError) throw studentError;
 
-      alert(
-        "Registration successful! Check your email to confirm your account."
-      );
+      alert("Registration successful! Check your email to confirm your account.");
 
       // Reset form
       setFormData({
@@ -98,10 +115,11 @@ export default function RegisterPage() {
         last_name: "",
         middle_initial: "",
         department: "",
+        course: "",
+        year_level: "",
         email: "",
         password: "",
       });
-
     } catch (err: any) {
       console.error("Registration error:", err);
       setError(err.message || "Registration failed. Please try again.");
@@ -157,7 +175,6 @@ export default function RegisterPage() {
                 onChange={handleChange}
                 required
               />
-
               <input
                 name="last_name"
                 placeholder="Last Name"
@@ -183,16 +200,44 @@ export default function RegisterPage() {
                 value={formData.department}
                 onChange={handleChange}
                 required
-                className={`${inputClass}`}
+                className={inputClass}
               >
                 <option value="" disabled>Select Department</option>
                 {departments.map((d: any) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
+                  <option key={d.id} value={d.id}>{d.name}</option>
                 ))}
               </select>
             </div>
+
+            {/* COURSE */}
+            <select
+              name="course"
+              value={formData.course}
+              onChange={handleChange}
+              required
+              className={inputClass}
+              disabled={!formData.department}
+            >
+              <option value="" disabled>Select Course</option>
+              {courses.map((c: any) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+
+            {/* YEAR LEVEL */}
+            <select
+              name="year_level"
+              value={formData.year_level}
+              onChange={handleChange}
+              required
+              className={inputClass}
+            >
+              <option value="" disabled>Select Year Level</option>
+              <option value="1st Year">1st Year</option>
+              <option value="2nd Year">2nd Year</option>
+              <option value="3rd Year">3rd Year</option>
+              <option value="4th Year">4th Year</option>
+            </select>
 
             {/* EMAIL */}
             <input

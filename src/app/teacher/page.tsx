@@ -3,207 +3,400 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import TeacherClasses from "./components/TeacherClasses"; // Your future component
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import TeacherClasses from "./components/TeacherClasses";
+import ClassReport from "./components/ClassReport";
+import StudentAttendance from "./components/StudentAttendance";
+import TeacherProfile from "./components/TeacherProfile";
+import AttendanceChatbot from "./components/AttendanceChatbot";
+import { 
+  HomeIcon, ClipboardDocumentCheckIcon, UserGroupIcon, UserCircleIcon, ArrowLeftOnRectangleIcon, PlusCircleIcon 
+} from "@heroicons/react/24/outline";
 
 interface StudentRecord {
   id: string;
   first_name: string;
   last_name: string;
   email: string;
-  department?: string;
-  class_name: string;
-  status?: "Present" | "Absent" | "Missed";
-  role?: string;
+  department: string;
+  course: string;
+  status?: "Present";
 }
 
-const COLORS = ["#16a34a", "#dc2626", "#facc15"]; // green, red, yellow
+interface ClassRecord {
+  id: string;
+  class_name: string;
+  day_of_week: string;
+  start_time: string;
+  end_time: string;
+  year_level: string;
+  block: string;
+}
 
-type Tab = "Dashboard" | "Classes" | "Reports" | "Attendance" | "Profile";
+type Tab = "Dashboard" | "Reports" | "Attendance" | "Profile";
 
 export default function TeacherDashboard() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
-  const [students, setStudents] = useState<StudentRecord[]>([]);
-  const [assignedClass, setAssignedClass] = useState<string | null>(null);
-  const [filterStatus, setFilterStatus] = useState<"All" | "Present" | "Absent" | "Missed">("All");
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("Dashboard");
 
-  // Auth check
+  const [assignedClasses, setAssignedClasses] = useState<ClassRecord[]>([]);
+  const [studentsByClass, setStudentsByClass] = useState<Record<string, StudentRecord[]>>({});
+  const [activeAttendanceClass, setActiveAttendanceClass] = useState<string | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [finishedClasses, setFinishedClasses] = useState<string[]>([]);
+  const [showAddClassModal, setShowAddClassModal] = useState(false);
+
+  // --------------------------
+  // AUTH CHECK
+  // --------------------------
   useEffect(() => {
-    const fetchSession = async () => {
+    const checkAuth = async () => {
       const { data } = await supabase.auth.getSession();
       if (!data.session) router.push("/login");
       else setUser(data.session.user);
+      setLoading(false);
     };
-    fetchSession();
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) router.push("/login");
-      else setUser(session.user);
-    });
-
-    return () => listener.subscription.unsubscribe();
+    checkAuth();
   }, [router]);
 
-  // Fetch students in assigned class
+  // --------------------------
+  // FETCH TEACHER CLASSES
+  // --------------------------
+  const fetchClasses = async () => {
+    if (!user) return;
+    const { data, error } = await supabase
+      .from("classes")
+      .select("id, class_name, day_of_week, start_time, end_time, year_level, block")
+      .eq("teacher_id", user.id)
+      .order("created_at", { ascending: false });
+    if (!error && data) setAssignedClasses(data);
+  };
+
   useEffect(() => {
+    fetchClasses();
     if (!user) return;
 
+    const channel = supabase
+      .channel('teacher-classes')
+      .on(
+        'postgres_changes', 
+        { event: '*', schema: 'public', table: 'classes', filter: `teacher_id=eq.${user.id}` }, 
+        () => fetchClasses()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
+
+  // --------------------------
+  // FETCH STUDENTS PER CLASS
+  // --------------------------
+  useEffect(() => {
+    if (!assignedClasses.length) return;
+
     const fetchStudents = async () => {
-      try {
-        const { data: profileData } = await supabase
-          .from("profiles")
-          .select("class_name, first_name, last_name, department")
-          .eq("id", user.id)
-          .single();
+      const result: Record<string, StudentRecord[]> = {};
+      for (const cls of assignedClasses) {
+        const { data } = await supabase
+          .from("class_enrollment")
+          .select(`
+            student_id,
+            students!inner (
+              id,
+              first_name,
+              last_name,
+              email,
+              departments:department_id(name),
+              courses:course_id(name)
+            )
+          `)
+          .eq("class_id", cls.id);
 
-        const className = profileData?.class_name || null;
-        setAssignedClass(className);
-
-        if (!className) return;
-
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("id, first_name, last_name, email, status, role, class_name")
-          .eq("class_name", className)
-          .order("last_name", { ascending: true });
-
-        if (error) throw error;
-        setStudents(data || []);
-      } catch (err) {
-        console.error("Error fetching students:", err);
+        result[cls.id] =
+          (data || []).map((s: any) => ({
+            id: s.student_id,
+            first_name: s.students.first_name,
+            last_name: s.students.last_name,
+            email: s.students.email,
+            department: s.students.departments?.name ?? "",
+            course: s.students.courses?.name ?? "",
+            status: undefined,
+          })) ?? [];
       }
+      setStudentsByClass(result);
     };
 
     fetchStudents();
-  }, [user]);
+  }, [assignedClasses]);
 
-  const totalPresent = students.filter(s => s.status === "Present").length;
-  const totalAbsent = students.filter(s => s.status === "Absent").length;
-  const totalMissed = students.filter(s => s.status === "Missed").length;
-  const totalStudents = students.length;
+  // --------------------------
+  // MARK PRESENT
+  // --------------------------
+  const markPresent = (classId: string, studentId: string) => {
+    setStudentsByClass(prev => ({
+      ...prev,
+      [classId]: prev[classId].map(s =>
+        s.id === studentId ? { ...s, status: s.status === "Present" ? undefined : "Present" } : s
+      ),
+    }));
+  };
 
-  const chartData = [
-    { name: "Present", value: totalPresent },
-    { name: "Absent", value: totalAbsent },
-    { name: "Missed", value: totalMissed },
-  ];
+  // --------------------------
+  // START ATTENDANCE SESSION
+  // --------------------------
+  const startAttendance = async (classId: string) => {
+    const today = new Date().toISOString().split("T")[0];
 
+    const { data: session, error: fetchError } = await supabase
+      .from("attendance_sessions")
+      .select("*")
+      .eq("class_id", classId)
+      .eq("session_date", today)
+      .maybeSingle();
+
+    if (fetchError) return console.error("Error fetching session:", fetchError);
+
+    if (session) {
+      setActiveAttendanceClass(classId);
+      setActiveSessionId(session.id);
+      return;
+    }
+
+    const { data: newSession, error: insertError } = await supabase
+      .from("attendance_sessions")
+      .insert([{
+        class_id: classId,
+        session_date: today,
+        created_by: user.id,
+        started_at: new Date().toISOString(),
+      }])
+      .select()
+      .maybeSingle();
+
+    if (insertError) return console.error("Error starting session:", insertError);
+
+    if (newSession) {
+      setActiveAttendanceClass(classId);
+      setActiveSessionId(newSession.id);
+    }
+  };
+
+  // --------------------------
+  // END ATTENDANCE SESSION
+  // --------------------------
+  const endAttendance = async (classId: string) => {
+    if (!activeSessionId) return;
+
+    const students = studentsByClass[classId];
+    const payload = students.map(s => ({
+      session_id: activeSessionId,
+      class_id: classId,
+      student_id: s.id,
+      status: s.status === "Present" ? "Present" : "Absent",
+    }));
+
+    await supabase.from("attendance").insert(payload);
+
+    await supabase
+      .from("attendance_sessions")
+      .update({ ended_at: new Date().toISOString() })
+      .eq("id", activeSessionId);
+
+    setFinishedClasses(prev => [...prev, classId]);
+    setActiveAttendanceClass(null);
+    setActiveSessionId(null);
+  };
+
+  // --------------------------
+  // LOGOUT
+  // --------------------------
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push("/login");
   };
 
-  const filteredStudents = students.filter(student =>
-    filterStatus === "All" ? true : student.status === filterStatus
-  );
+  if (loading) return <div className="h-screen flex items-center justify-center text-gray-500">Loading...</div>;
 
-  // Sidebar nav items
-  const navItems: Tab[] = ["Dashboard", "Classes", "Reports", "Attendance", "Profile"];
+  const navItems: { name: Tab; icon: JSX.Element }[] = [
+    { name: "Dashboard", icon: <HomeIcon className="w-5 h-5" /> },
+    { name: "Reports", icon: <ClipboardDocumentCheckIcon className="w-5 h-5" /> },
+    { name: "Attendance", icon: <UserGroupIcon className="w-5 h-5" /> },
+    { name: "Profile", icon: <UserCircleIcon className="w-5 h-5" /> },
+  ];
+
+  const formatTime12Hour = (time: string) => {
+    const [hourStr, minStr] = time.split(":");
+    let hour = Number(hourStr);
+    const minute = Number(minStr);
+    const ampm = hour >= 12 ? "pm" : "am";
+    if (hour > 12) hour -= 12;
+    if (hour === 0) hour = 12;
+    return `${hour}:${minute.toString().padStart(2, "0")} ${ampm}`;
+  };
+
+  const getClassStatus = (cls: ClassRecord) => {
+    const todayDay = new Date().toLocaleString("en-US", { weekday: "long" });
+    const finished = finishedClasses.includes(cls.id);
+    if (finished) return "Done";
+    if (cls.day_of_week === todayDay) return "Ongoing";
+    return "Upcoming";
+  };
+
+  const isButtonDisabled = (cls: ClassRecord) => {
+    const now = new Date();
+    const todayDay = now.toLocaleString("en-US", { weekday: "long" });
+    const finished = finishedClasses.includes(cls.id);
+    if (finished) return true;
+
+    if (cls.day_of_week.toLowerCase() !== todayDay.toLowerCase()) return true;
+
+    const [startHour, startMinute] = cls.start_time.split(":").map(Number);
+    const [endHour, endMinute] = cls.end_time.split(":").map(Number);
+
+    const classStart = new Date(now);
+    classStart.setHours(startHour, startMinute, 0, 0);
+
+    const classEnd = new Date(now);
+    classEnd.setHours(endHour, endMinute, 0, 0);
+
+    if (classEnd <= classStart) classEnd.setDate(classEnd.getDate() + 1);
+
+    const bufferMs = 5 * 60 * 1000;
+    return now.getTime() < classStart.getTime() - bufferMs || now.getTime() > classEnd.getTime();
+  };
 
   return (
     <div className="flex h-screen bg-gray-50 text-gray-800 overflow-hidden">
-      {/* Sidebar */}
-      <aside className="w-64 bg-white shadow-xl flex flex-col justify-between p-6 shrink-0">
+      {/* SIDEBAR */}
+      <aside className="w-64 bg-white shadow-xl p-6 flex flex-col justify-between border-r">
         <div>
-          <h1 className="text-2xl font-extrabold text-green-700 mb-8 text-center">Teacher Panel</h1>
+          <h1 className="text-3xl font-extrabold text-green-700 text-center mb-8">Teacher Panel</h1>
           <nav className="flex flex-col gap-3">
             {navItems.map(tab => (
               <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`flex items-center gap-3 text-gray-700 font-semibold p-3 rounded-xl transition text-base ${
-                  activeTab === tab ? "bg-green-50" : "hover:bg-green-50"
-                }`}
+                key={tab.name}
+                onClick={() => setActiveTab(tab.name)}
+                className={`p-3 flex items-center gap-3 rounded-xl font-medium transition ${activeTab === tab.name ? "bg-green-100 text-green-700" : "hover:bg-gray-100"}`}
               >
-                {tab === "Dashboard" && "📊 Dashboard"}
-                {tab === "Classes" && "🏫 Classes"}
-                {tab === "Reports" && "📈 Reports"}
-                {tab === "Attendance" && "🧑‍🎓 Attendance"}
-                {tab === "Profile" && "👤 Profile"}
+                {tab.icon} {tab.name}
               </button>
             ))}
           </nav>
         </div>
-
-        <button
-          onClick={handleLogout}
-          className="mt-8 w-full py-3 text-red-700 font-bold rounded-xl hover:bg-red-50 transition text-base flex justify-center items-center gap-2"
-        >
-          🔓 Logout
+        <button onClick={handleLogout} className="w-full py-3 bg-red-50 text-red-700 rounded-xl hover:bg-red-100 font-bold flex items-center justify-center gap-2">
+          <ArrowLeftOnRectangleIcon className="w-5 h-5" /> Logout
         </button>
       </aside>
 
-      {/* Main Content */}
+      {/* MAIN */}
       <main className="flex-1 overflow-y-auto p-6 space-y-6">
         {activeTab === "Dashboard" && (
           <>
-            {/* Welcome Header */}
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-              <h2 className="text-3xl sm:text-4xl font-extrabold">Welcome, {user?.email}</h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-3xl font-bold">Welcome, {user?.email}</h2>
+              <button
+                onClick={() => setShowAddClassModal(true)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center gap-2"
+              >
+                <PlusCircleIcon className="w-5 h-5" /> Add Class
+              </button>
             </div>
 
-            {/* Assigned Class */}
-            {assignedClass && (
-              <div className="bg-white rounded-2xl shadow p-4 w-max">
-                <span className="text-gray-700 font-medium">Assigned Class: </span>
-                <span className="font-bold text-green-700">{assignedClass}</span>
-              </div>
+            {showAddClassModal && (
+              <TeacherClasses
+                teacherId={user.id}
+                onClose={() => setShowAddClassModal(false)}
+                onClassAdded={(newClass: ClassRecord) => setAssignedClasses(prev => [newClass, ...prev])}
+              />
             )}
 
-            {/* Attendance Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-green-50 rounded-xl p-6 shadow text-center">
-                <h3 className="text-gray-700">Present Today</h3>
-                <span className="text-3xl font-bold text-green-700">{totalPresent}</span>
-              </div>
-              <div className="bg-red-50 rounded-xl p-6 shadow text-center">
-                <h3 className="text-gray-700">Absent Today</h3>
-                <span className="text-3xl font-bold text-red-700">{totalAbsent}</span>
-              </div>
-              <div className="bg-yellow-50 rounded-xl p-6 shadow text-center">
-                <h3 className="text-gray-700">Missed Classes</h3>
-                <span className="text-3xl font-bold text-yellow-700">{totalMissed}</span>
-              </div>
-              <div className="bg-blue-50 rounded-xl p-6 shadow text-center">
-                <h3 className="text-gray-700">Total Students</h3>
-                <span className="text-3xl font-bold text-blue-700">{totalStudents}</span>
-              </div>
-            </div>
+            <p className="text-gray-600 mb-6">Manage today's attendance.</p>
 
-            {/* Attendance Chart */}
-            <div className="bg-white rounded-2xl shadow p-6">
-              <h3 className="text-2xl font-bold mb-4">Attendance Distribution</h3>
-              <div className="w-full h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={chartData}
-                      dataKey="value"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={90}
-                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                    >
-                      {chartData.map((_, i) => (
-                        <Cell key={i} fill={COLORS[i]} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value: number) => `${value} students`} />
-                    <Legend verticalAlign="bottom" />
-                  </PieChart>
-                </ResponsiveContainer>
+            {!activeAttendanceClass ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 mt-6">
+                {assignedClasses.map(cls => {
+                  const students = studentsByClass[cls.id] || [];
+                  const present = students.filter(s => s.status === "Present").length;
+                  const finished = finishedClasses.includes(cls.id);
+                  const status = getClassStatus(cls);
+                  const disabled = isButtonDisabled(cls);
+
+                  let absentDisplay = 0;
+                  if (finished) absentDisplay = students.length - present;
+
+                  return (
+                    <div key={cls.id} className={`p-6 bg-white rounded-2xl shadow hover:shadow-lg transition relative ${finished ? "opacity-60 pointer-events-none" : ""}`}>
+                      <span className={`absolute top-2 right-2 text-sm px-2 py-1 rounded ${status === "Done" ? "bg-green-600 text-white" : status === "Ongoing" ? "bg-yellow-400 text-black" : "bg-gray-300 text-gray-700"}`}>{status}</span>
+
+                      <h3 className="text-xl font-bold">{cls.class_name}</h3>
+                      <p className="text-gray-600">{cls.block} • {cls.day_of_week} • {formatTime12Hour(cls.start_time)} - {formatTime12Hour(cls.end_time)}</p>
+
+                      {!finished && status !== "Ongoing" ? null : (
+                        <div className="mt-4 space-y-1">
+                          <p>Total Students: {students.length}</p>
+                          <p className="text-green-600">Present: {present}</p>
+                          {finished && <p className="text-red-600">Absent: {absentDisplay}</p>}
+                        </div>
+                      )}
+
+                      <button
+                        onClick={() => startAttendance(cls.id)}
+                        disabled={disabled}
+                        title={`Start class at ${formatTime12Hour(cls.start_time)}`}
+                        className={`mt-4 w-full px-4 py-2 rounded-xl font-bold transition ${disabled ? "bg-gray-300 text-gray-700 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700"}`}
+                      >
+                        Start Attendance
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
-            </div>
+            ) : (
+              <div className="bg-white p-6 rounded-2xl shadow">
+                <button onClick={() => setActiveAttendanceClass(null)} className="mb-4 px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 flex items-center gap-1">
+                  <ArrowLeftOnRectangleIcon className="w-4 h-4" /> Back
+                </button>
+                <h3 className="text-2xl font-bold mb-4">Attendance – {assignedClasses.find(c => c.id === activeAttendanceClass)?.class_name}</h3>
+                <table className="w-full border-collapse text-sm">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="border px-4 py-2 text-left">Student</th>
+                      <th className="border px-4 py-2 text-left">Department</th>
+                      <th className="border px-4 py-2 text-left">Course</th>
+                      <th className="border px-4 py-2 text-left">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {studentsByClass[activeAttendanceClass]?.map(student => (
+                      <tr key={student.id}>
+                        <td className="border px-4 py-2">{student.first_name} {student.last_name}</td>
+                        <td className="border px-4 py-2">{student.department}</td>
+                        <td className="border px-4 py-2">{student.course}</td>
+                        <td className="border px-4 py-2">
+                          <button
+                            onClick={() => markPresent(activeAttendanceClass, student.id)}
+                            className={`px-3 py-1 rounded text-white ${student.status === "Present" ? "bg-green-500" : "bg-blue-500 hover:bg-blue-600"}`}
+                          >
+                            {student.status === "Present" ? "Present" : "Mark Present"}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <button onClick={() => endAttendance(activeAttendanceClass)} className="mt-4 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">End Attendance</button>
+              </div>
+            )}
           </>
         )}
 
-        {activeTab === "Classes" && <TeacherClasses teacherId={user?.id} />}
-        {activeTab === "Reports" && <div>Reports Page Coming Soon...</div>}
-        {activeTab === "Attendance" && <div>Attendance Page Coming Soon...</div>}
-        {activeTab === "Profile" && <div>Profile Page Coming Soon...</div>}
+        {activeTab === "Reports" && <ClassReport assignedClasses={assignedClasses} />}
+        {activeTab === "Attendance" && <StudentAttendance assignedClasses={assignedClasses} />}
+        {activeTab === "Profile" && <TeacherProfile />}
+        {user && <AttendanceChatbot teacherId={user.id} />}
       </main>
     </div>
   );

@@ -27,18 +27,38 @@ export default function LoginPage() {
       if (loginError) throw loginError;
       if (!authData.user) throw new Error("User not found");
 
-      // Fetch role from profiles table
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", authData.user.id)
+      const userId = authData.user.id;
+
+      // Check if user is a teacher
+      const { data: teacher, error: teacherError } = await supabase
+        .from("teachers")
+        .select("id")
+        .eq("id", userId)
         .single();
 
-      if (profileError) throw profileError;
+      if (teacherError && teacherError.code !== "PGRST116") throw teacherError; // ignore "no rows" error
 
-      // Redirect based on role
-      if (profile?.role === "teacher") router.push("/teacher");
-      else router.push("/student");
+      if (teacher) {
+        router.push("/teacher"); // redirect to teacher dashboard
+        return;
+      }
+
+      // Check if user is a student
+      const { data: student, error: studentError } = await supabase
+        .from("students")
+        .select("id")
+        .eq("id", userId)
+        .single();
+
+      if (studentError) throw studentError;
+      if (student) {
+        router.push("/student"); // redirect to student dashboard
+        return;
+      }
+
+      // If not found in either table
+      throw new Error("User role not recognized");
+
     } catch (err: any) {
       console.error("Login error:", err);
       setError(err.message || "An unexpected error occurred");
@@ -47,6 +67,7 @@ export default function LoginPage() {
     }
   };
 
+  
   const inputClass =
     "w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-gray-900 placeholder-gray-400";
 
