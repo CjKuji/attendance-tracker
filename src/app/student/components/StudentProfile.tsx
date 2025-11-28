@@ -55,7 +55,7 @@ export default function StudentProfile({ userId }: StudentProfileProps) {
       setLoading(true);
       setError(null);
       try {
-        const { data, error } = await supabase.from("students").select("*").eq("id", userId).single();
+        const { data, error } = await supabase.from("students").select("*").eq("id", userId).maybeSingle();
         if (error) throw error;
         setStudent(data);
       } catch (err: any) {

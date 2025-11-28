@@ -117,7 +117,7 @@ export default function TeacherProfile() {
         .from("teachers")
         .select("*")
         .eq("id", uid)
-        .single();
+        .maybeSingle();
       const teacherData = tdata as Teacher | null;
 
       if (terr) {

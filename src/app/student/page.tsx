@@ -70,7 +70,7 @@ export default function StudentDashboard() {
           .from("student_attendance_summary")
           .select("*")
           .eq("student_id", user.id)
-          .single();
+          .maybeSingle();
         if (summaryError) throw summaryError;
         setStudentSummary(summaryData);
 

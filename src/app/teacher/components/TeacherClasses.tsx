@@ -60,7 +60,7 @@ export default function TeacherClasses({ teacherId, onClose, onClassAdded }: Tea
         .from("teachers")
         .select("department_id")
         .eq("id", teacherId)
-        .single();
+        .maybeSingle();
       if (error) throw error;
       setTeacherDeptId(data?.department_id || null);
     } catch (err) {

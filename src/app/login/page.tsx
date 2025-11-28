@@ -34,7 +34,7 @@ export default function LoginPage() {
         .from("teachers")
         .select("id")
         .eq("id", userId)
-        .single();
+        .maybeSingle();
 
       if (teacherError && teacherError.code !== "PGRST116") throw teacherError; // ignore "no rows" error
 
@@ -48,7 +48,7 @@ export default function LoginPage() {
         .from("students")
         .select("id")
         .eq("id", userId)
-        .single();
+        .maybeSingle();
 
       if (studentError) throw studentError;
       if (student) {
