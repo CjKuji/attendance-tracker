@@ -73,9 +73,29 @@ export default function TeacherDashboard() {
     if (!error && data) setAssignedClasses(data);
   };
 
-  useEffect(() => {
-    fetchClasses();
+  // --------------------------
+  // FETCH FINISHED CLASSES
+  // --------------------------
+  const fetchFinishedClasses = async () => {
     if (!user) return;
+    const today = new Date().toISOString().split("T")[0];
+    const { data, error } = await supabase
+      .from("attendance_sessions")
+      .select("class_id")
+      .eq("created_by", user.id)
+      .not("ended_at", "is", null)
+      .gte("session_date", today); // optional: limit to today or ongoing sessions
+
+    if (!error && data) {
+      setFinishedClasses(data.map((s: any) => s.class_id));
+    }
+  };
+
+  useEffect(() => {
+    if (!user) return;
+
+    fetchClasses();
+    fetchFinishedClasses();
 
     const channel = supabase
       .channel('teacher-classes')
@@ -148,6 +168,8 @@ export default function TeacherDashboard() {
   // START ATTENDANCE SESSION
   // --------------------------
   const startAttendance = async (classId: string) => {
+    if (finishedClasses.includes(classId)) return; // Prevent starting finished class
+
     const today = new Date().toISOString().split("T")[0];
 
     const { data: session, error: fetchError } = await supabase
@@ -160,6 +182,10 @@ export default function TeacherDashboard() {
     if (fetchError) return console.error("Error fetching session:", fetchError);
 
     if (session) {
+      if (session.ended_at) {
+        setFinishedClasses(prev => [...prev, classId]); // ensure finished
+        return; // already ended
+      }
       setActiveAttendanceClass(classId);
       setActiveSessionId(session.id);
       return;
@@ -250,7 +276,6 @@ export default function TeacherDashboard() {
     const todayDay = now.toLocaleString("en-US", { weekday: "long" });
     const finished = finishedClasses.includes(cls.id);
     if (finished) return true;
-
     if (cls.day_of_week.toLowerCase() !== todayDay.toLowerCase()) return true;
 
     const [startHour, startMinute] = cls.start_time.split(":").map(Number);
@@ -261,10 +286,9 @@ export default function TeacherDashboard() {
 
     const classEnd = new Date(now);
     classEnd.setHours(endHour, endMinute, 0, 0);
-
     if (classEnd <= classStart) classEnd.setDate(classEnd.getDate() + 1);
 
-    const bufferMs = 5 * 60 * 1000;
+    const bufferMs = 5 * 60 * 1000; // 5-min buffer
     return now.getTime() < classStart.getTime() - bufferMs || now.getTime() > classEnd.getTime();
   };
 
@@ -326,9 +350,7 @@ export default function TeacherDashboard() {
                   return (
                     <div
                       key={cls.id}
-                      className={`p-6 bg-white rounded-2xl shadow hover:shadow-lg transition relative ${
-                        finished ? "opacity-60 pointer-events-none" : ""
-                      }`}
+                      className={`p-6 bg-white rounded-2xl shadow hover:shadow-lg transition relative ${finished ? "opacity-60 pointer-events-none" : ""}`}
                     >
                       <span
                         className={`absolute top-2 right-2 text-sm px-2 py-1 rounded ${
@@ -355,9 +377,7 @@ export default function TeacherDashboard() {
                         onClick={() => startAttendance(cls.id)}
                         disabled={disabled || finished}
                         title={`Start class at ${formatTime12Hour(cls.start_time)}`}
-                        className={`mt-4 w-full px-4 py-2 rounded-xl font-bold transition ${
-                          disabled || finished ? "bg-gray-300 text-gray-700 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700"
-                        }`}
+                        className={`mt-4 w-full px-4 py-2 rounded-xl font-bold transition ${disabled || finished ? "bg-gray-300 text-gray-700 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700"}`}
                       >
                         Start Attendance
                       </button>

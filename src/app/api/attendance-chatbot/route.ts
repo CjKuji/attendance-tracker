@@ -11,12 +11,16 @@ export async function POST(req: Request) {
     const { teacherId, studentId, question } = await req.json();
 
     if ((!teacherId && !studentId) || !question) {
-      return new Response(JSON.stringify({ error: "Missing teacherId/studentId or question" }), { status: 400 });
+      return new Response(
+        JSON.stringify({ error: "Missing teacherId/studentId or question" }),
+        { status: 400 }
+      );
     }
 
     let classes: any[] = [];
     let role = "";
 
+    // Fetch classes
     if (teacherId) {
       role = "teacher";
       const { data, error } = await supabase
@@ -34,7 +38,11 @@ export async function POST(req: Request) {
       if (enrollError) throw enrollError;
 
       const classIds = enrollmentData?.map((e: any) => e.class_id) || [];
-      if (!classIds.length) return new Response(JSON.stringify({ answer: "No enrolled classes found." }), { status: 200 });
+      if (!classIds.length)
+        return new Response(
+          JSON.stringify({ answer: "No enrolled classes found." }),
+          { status: 200 }
+        );
 
       const { data: clsData, error: clsError } = await supabase
         .from("classes")
@@ -44,36 +52,70 @@ export async function POST(req: Request) {
       classes = clsData || [];
     }
 
-    if (!classes.length) return new Response(JSON.stringify({ answer: "No classes found." }), { status: 200 });
+    if (!classes.length)
+      return new Response(
+        JSON.stringify({ answer: "No classes found." }),
+        { status: 200 }
+      );
 
-    const attendanceData: Record<string, any> = {};
+    // Fetch attendance data per class & session
+    const attendanceData: Record<string, any[]> = {};
 
     for (const cls of classes) {
       const { data: sessions } = await supabase
         .from("attendance_sessions")
         .select("id, session_date")
-        .eq("class_id", cls.id);
+        .eq("class_id", cls.id)
+        .order("session_date", { ascending: true });
 
       if (!sessions?.length) continue;
 
-      attendanceData[cls.class_name] = {};
+      attendanceData[cls.class_name] = [];
 
       for (const session of sessions) {
         const { data: records } = await supabase
           .from("attendance")
-          .select("status, student_id")
-          .eq("session_id", session.id);
+          .select("status, students(first_name, last_name)")
+          .eq("session_id", session.id)
+          .order("students.last_name", { ascending: true });
 
-        const present = records?.filter((r: any) => r.status === "Present").length || 0;
-        const absent = records?.filter((r: any) => r.status === "Absent").length || 0;
+        const presentStudents =
+          records
+            ?.filter(r => r.status === "Present")
+            .map(r => {
+              const student = r.students?.[0];
+              return student ? `${student.first_name} ${student.last_name}` : "Unknown";
+            }) || [];
 
-        attendanceData[cls.class_name][session.session_date] = { totalStudents: present + absent, present, absent };
+        const absentStudents =
+          records
+            ?.filter(r => r.status === "Absent")
+            .map(r => {
+              const student = r.students?.[0];
+              return student ? `${student.first_name} ${student.last_name}` : "Unknown";
+            }) || [];
+
+        attendanceData[cls.class_name].push({
+          sessionDate: session.session_date,
+          presentStudents,
+          absentStudents,
+          totalStudents: presentStudents.length + absentStudents.length,
+        });
       }
     }
 
-    const prompt = `You are an AI assistant for role: ${role}.
-Attendance data: ${JSON.stringify(attendanceData)}.
-Answer the question: "${question}" clearly.`;
+    // AI prompt
+    const prompt = `
+You are a smart assistant for role: ${role}.
+You have attendance data per class as follows:
+
+${JSON.stringify(attendanceData, null, 2)}
+
+Answer the user's question: "${question}".
+- If the question is "Who is absent today?", list absent students by class.
+- If the question is "Who has the most absences?", compute totals across sessions and rank students.
+- Always include class names and session dates when relevant.
+`;
 
     const response = await gemini.chat.completions.create({
       model: "gemini-2.5-flash",
@@ -81,6 +123,7 @@ Answer the question: "${question}" clearly.`;
     });
 
     const answer = response.choices?.[0]?.message?.content || "No response";
+
     return new Response(JSON.stringify({ answer }), { status: 200 });
   } catch (err: any) {
     console.error("Attendance Chatbot Error:", err);
