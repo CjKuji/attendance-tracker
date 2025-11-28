@@ -40,19 +40,24 @@ export default function StudentDashboard() {
 
   // Auth & session
   useEffect(() => {
+    let authSubscription: { data: { subscription: { unsubscribe: () => void } } } | null = null;
+
     const init = async () => {
       const { data } = await supabase.auth.getSession();
       if (!data.session) router.push("/login");
       else setUser(data.session.user);
 
-      const { subscription } = supabase.auth.onAuthStateChange((_e, session) => {
+      authSubscription = supabase.auth.onAuthStateChange((_event, session) => {
         if (!session) router.push("/login");
         else setUser(session.user);
       });
-
-      return () => subscription.unsubscribe();
     };
+
     init();
+
+    return () => {
+      if (authSubscription?.data?.subscription) authSubscription.data.subscription.unsubscribe();
+    };
   }, [router]);
 
   // Fetch student summary and classes
@@ -208,7 +213,7 @@ export default function StudentDashboard() {
 
         {activeTab === "enroll" && <EnrollClass userId={user?.id} />}
         {activeTab === "profile" && <StudentProfile userId={user?.id} />}
-         {user && <AttendanceChatbot teacherId={user.id} />}
+        {user && <AttendanceChatbot teacherId={user.id} />}
       </main>
     </div>
   );

@@ -66,18 +66,6 @@ CREATE TABLE teachers (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
-INSERT INTO teachers (
-    id, first_name, last_name, email, department_id
-)
-SELECT
-    '0f409208-bedb-4051-bc3f-2ac5e85b8a0d',
-    'Joms',
-    'Teacher',
-    'penixkujs@gmail.com',
-    d.id
-FROM departments d
-WHERE d.name = 'CCS';
-
 -- ============================================
 -- STUDENTS
 -- ============================================
@@ -91,22 +79,6 @@ CREATE TABLE students (
     year_level VARCHAR(20) NOT NULL,
     created_at TIMESTAMPTZ DEFAULT now()
 );
-
-INSERT INTO students (
-    id, first_name, last_name, email,
-    department_id, course_id, year_level
-)
-SELECT
-    '27cf3d0d-77c2-4e70-998d-732a784263e3',
-    'Sample',
-    'Student',
-    'cjbugero@gmail.com',
-    d.id,
-    c.id,
-    '2nd Year'
-FROM departments d
-JOIN courses c ON c.name = 'BSIT' AND c.department_id = d.id
-WHERE d.name = 'CCS';
 
 -- ============================================
 -- CLASSES (Created by teachers)
@@ -147,18 +119,15 @@ DECLARE
     new_block CHAR(1);
     existing_blocks TEXT[];
 BEGIN
-    -- Get the block of the class being enrolled
     SELECT block INTO new_block
     FROM classes
     WHERE id = NEW.class_id;
 
-    -- Get all distinct blocks the student is already enrolled in
     SELECT ARRAY_AGG(DISTINCT c.block) INTO existing_blocks
     FROM class_enrollment ce
     JOIN classes c ON ce.class_id = c.id
     WHERE ce.student_id = NEW.student_id;
 
-    -- If student is already enrolled in a different block, block enrollment
     IF existing_blocks IS NOT NULL AND NOT (new_block = ANY(existing_blocks)) THEN
         RAISE EXCEPTION 'Student already enrolled in block %, cannot enroll in block %', existing_blocks[1], new_block;
     END IF;
@@ -173,7 +142,7 @@ FOR EACH ROW
 EXECUTE FUNCTION enforce_same_block_enrollment();
 
 -- ============================================
--- ATTENDANCE SESSIONS (manual attendance per day)
+-- ATTENDANCE SESSIONS
 -- ============================================
 CREATE TABLE attendance_sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -181,8 +150,9 @@ CREATE TABLE attendance_sessions (
     session_date DATE NOT NULL,
     created_by UUID NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ DEFAULT now(),
-    started_at timestamp with time zone DEFAULT now(),
-    ended_at timestamp with time zone,
+    started_at TIMESTAMPTZ,
+    ended_at TIMESTAMPTZ,
+    status VARCHAR(10) DEFAULT 'Ongoing' CHECK (status IN ('Ongoing','Ended')),
     UNIQUE(class_id, session_date)
 );
 
@@ -202,10 +172,14 @@ CREATE TABLE attendance (
 );
 
 -- ============================================
--- VIEWS FOR DASHBOARD SUMMARIES
+-- INDEXES FOR PERFORMANCE
 -- ============================================
+CREATE INDEX idx_attendance_student_class_session ON attendance(student_id, class_id, session_id);
+CREATE INDEX idx_attendance_sessions_class_date ON attendance_sessions(class_id, session_date);
 
--- Total present, absent, classes per student
+-- ============================================
+-- VIEWS FOR DASHBOARD
+-- ============================================
 CREATE OR REPLACE VIEW student_attendance_summary AS
 SELECT
     s.id AS student_id,
@@ -220,7 +194,6 @@ LEFT JOIN classes c ON c.id = ce.class_id
 LEFT JOIN attendance a ON a.student_id = s.id AND a.class_id = c.id
 GROUP BY s.id;
 
--- Per-class attendance summary for student dashboard cards
 CREATE OR REPLACE VIEW student_class_attendance AS
 SELECT
     s.id AS student_id,
