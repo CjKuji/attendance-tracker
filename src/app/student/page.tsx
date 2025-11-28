@@ -1,14 +1,13 @@
-// app/components/StudentDashboard.tsx
 "use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { BarChart3, CalendarDays, LogOut, UserCircle, CheckCircle } from "lucide-react";
+import { BarChart3, LogOut, UserCircle, CheckCircle } from "lucide-react";
 import StudentProfile from "./components/StudentProfile";
 import EnrollClass from "./components/EnrollClass";
-import AttendanceHistory from "./components/AttendanceHistory";
+import AttendanceChatbot from "./components/AttendanceChatbot";
 
 interface StudentSummary {
   student_id: string;
@@ -27,8 +26,8 @@ interface ClassSummary {
   total_sessions: number;
 }
 
-const COLORS = ["#16a34a", "#dc2626"];
-type Tab = "dashboard" | "attendance" | "profile" | "enroll";
+const COLORS = ["#10B981", "#EF4444"]; // green & red
+type Tab = "dashboard" | "profile" | "enroll";
 
 export default function StudentDashboard() {
   const router = useRouter();
@@ -39,64 +38,41 @@ export default function StudentDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // ---------------------------
-  // Auth & session handling
-  // ---------------------------
+  // Auth & session
   useEffect(() => {
     const init = async () => {
-      try {
-        const { data } = await supabase.auth.getSession();
-        if (!data.session) {
-          router.push("/login");
-          return;
-        }
-        setUser(data.session.user);
+      const { data } = await supabase.auth.getSession();
+      if (!data.session) router.push("/login");
+      else setUser(data.session.user);
 
-        // Subscribe to auth changes
-        const { subscription } = supabase.auth.onAuthStateChange((_event, session) => {
-          if (!session) router.push("/login");
-          else setUser(session.user);
-        });
+      const { subscription } = supabase.auth.onAuthStateChange((_e, session) => {
+        if (!session) router.push("/login");
+        else setUser(session.user);
+      });
 
-        return () => subscription.unsubscribe();
-      } catch (err) {
-        console.error("Session error:", err);
-        router.push("/login");
-      }
+      return () => subscription.unsubscribe();
     };
     init();
   }, [router]);
 
-  // ---------------------------
-  // Fetch student summary & classes
-  // ---------------------------
+  // Fetch student summary and classes
   useEffect(() => {
     if (!user?.id) return;
-
     const fetchData = async () => {
       setLoading(true);
       try {
-        // Student summary
         const { data: summaryData, error: summaryError } = await supabase
           .from("student_attendance_summary")
           .select("*")
           .eq("student_id", user.id)
-          .single(); // Use single() instead of maybeSingle()
-
+          .single();
         if (summaryError) throw summaryError;
-        if (!summaryData) {
-          setError("Student summary not found.");
-          setLoading(false);
-          return;
-        }
         setStudentSummary(summaryData);
 
-        // Per-class attendance summary
         const { data: classData, error: classError } = await supabase
           .from("student_class_attendance")
           .select("*")
           .eq("student_id", user.id);
-
         if (classError) throw classError;
         setClassSummaries(classData || []);
       } catch (err: any) {
@@ -106,103 +82,90 @@ export default function StudentDashboard() {
         setLoading(false);
       }
     };
-
     fetchData();
   }, [user]);
 
-  // ---------------------------
-  // Derived chart data
-  // ---------------------------
   const chartData = [
     { name: "Present", value: studentSummary?.total_present || 0 },
     { name: "Absent", value: studentSummary?.total_absent || 0 },
   ];
 
-  // ---------------------------
-  // Logout
-  // ---------------------------
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push("/login");
   };
 
-  // ---------------------------
-  // UI
-  // ---------------------------
   if (loading) return (
-    <div className="flex items-center justify-center h-screen">
-      <span className="text-gray-500">Loading...</span>
+    <div className="flex items-center justify-center h-screen bg-white">
+      <span className="text-lg font-bold text-black">Loading...</span>
     </div>
   );
 
   return (
-    <div className="flex h-screen bg-gray-100 text-gray-800 overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-white">
       {/* Sidebar */}
-      <aside className="w-64 bg-white shadow-xl flex flex-col justify-between p-6 shrink-0 border-r border-gray-200">
-        <div>
-          <h1 className="text-2xl font-extrabold text-green-700 mb-8 text-center tracking-tight">
-            GC Attendance
-          </h1>
+      <aside className="w-64 bg-gradient-to-b from-green-600 to-green-500 text-white flex flex-col justify-between p-6">
+        <h1 className="text-2xl font-extrabold mb-8 text-center tracking-tight drop-shadow-md">GC Attendance</h1>
 
-          <nav className="flex flex-col gap-2">
-            {[
-              { tab: "dashboard", icon: <BarChart3 className="w-5 h-5 text-green-600" />, label: "Dashboard" },
-              { tab: "enroll", icon: <CheckCircle className="w-5 h-5 text-green-600" />, label: "Enroll Class" },
-              { tab: "attendance", icon: <CalendarDays className="w-5 h-5 text-green-600" />, label: "Attendance History" },
-              { tab: "profile", icon: <UserCircle className="w-5 h-5 text-green-600" />, label: "Profile" },
-            ].map(item => (
-              <button
-                key={item.tab}
-                onClick={() => setActiveTab(item.tab as Tab)}
-                aria-current={activeTab === item.tab ? "page" : undefined}
-                className={`flex items-center gap-3 text-gray-700 font-semibold p-3 rounded-xl hover:bg-green-50 transition ${activeTab === item.tab ? "bg-green-50" : ""}`}
-              >
-                {item.icon}
-                <span>{item.label}</span>
-              </button>
-            ))}
-          </nav>
-        </div>
+        <nav className="flex flex-col gap-3">
+          {[
+            { tab: "dashboard", icon: <BarChart3 className="w-5 h-5" />, label: "Dashboard" },
+            { tab: "enroll", icon: <CheckCircle className="w-5 h-5" />, label: "Enroll Class" },
+            { tab: "profile", icon: <UserCircle className="w-5 h-5" />, label: "Profile" },
+          ].map(item => (
+            <button
+              key={item.tab}
+              onClick={() => setActiveTab(item.tab as Tab)}
+              className={`flex items-center gap-3 p-3 rounded-xl font-semibold hover:bg-green-700 transition ${
+                activeTab === item.tab ? "bg-green-800 shadow-lg" : ""
+              }`}
+            >
+              {item.icon}
+              <span className="text-white text-base">{item.label}</span>
+            </button>
+          ))}
+        </nav>
 
         <button
           onClick={handleLogout}
-          className="mt-8 w-full py-3 text-red-700 font-bold rounded-xl hover:bg-red-50 transition flex justify-center items-center gap-2"
+          className="mt-8 w-full py-3 bg-red-600 hover:bg-red-700 rounded-xl font-bold transition flex justify-center items-center gap-2"
         >
           <LogOut className="w-5 h-5" /> Logout
         </button>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto p-8">
-        {error && <div className="mb-4 text-center text-red-600 font-medium">{error}</div>}
+      <main className="flex-1 overflow-y-auto p-6 sm:p-8">
+        {error && <div className="mb-4 text-center text-red-600 font-semibold">{error}</div>}
 
-        {/* Dashboard Tab */}
         {activeTab === "dashboard" && studentSummary && (
           <>
-            <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
+            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight mb-6 text-black">
               Welcome, <span className="text-green-700">{user?.email}</span>
             </h2>
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-6 mt-6">
-              <div className="bg-green-50 rounded-2xl p-6 shadow text-center">
-                <span className="text-green-700 text-3xl font-extrabold">{studentSummary.total_present}</span>
-                <span className="text-gray-700 mt-2 font-medium block">Present</span>
-              </div>
-              <div className="bg-red-50 rounded-2xl p-6 shadow text-center">
-                <span className="text-red-700 text-3xl font-extrabold">{studentSummary.total_absent}</span>
-                <span className="text-gray-700 mt-2 font-medium block">Absent</span>
-              </div>
-              <div className="bg-blue-50 rounded-2xl p-6 shadow text-center">
-                <span className="text-blue-700 text-3xl font-extrabold">{studentSummary.total_classes}</span>
-                <span className="text-gray-700 mt-2 font-medium block">Total Classes</span>
-              </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+              {[
+                { label: "Present", value: studentSummary.total_present, color: "#10B981" },
+                { label: "Absent", value: studentSummary.total_absent, color: "#EF4444" },
+                { label: "Total Classes", value: studentSummary.total_classes, color: "#3B82F6" },
+              ].map((card) => (
+                <div
+                  key={card.label}
+                  className="rounded-3xl p-6 flex flex-col items-center justify-center transform hover:scale-105 transition shadow-md"
+                  style={{ backgroundColor: card.color }}
+                >
+                  <span className="text-white text-3xl font-extrabold">{card.value}</span>
+                  <span className="text-white mt-2 font-semibold">{card.label}</span>
+                </div>
+              ))}
             </div>
 
             {/* Attendance Chart */}
-            <div className="bg-white rounded-2xl shadow p-6 mt-6">
-              <h3 className="text-2xl font-bold mb-4">Attendance Overview</h3>
-              <div className="w-full h-80">
+            <div className="bg-white shadow-md rounded-3xl p-6 mt-8">
+              <h3 className="text-xl sm:text-2xl font-bold mb-4 text-black">Attendance Overview</h3>
+              <div className="w-full h-72 sm:h-96">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -211,7 +174,7 @@ export default function StudentDashboard() {
                       nameKey="name"
                       cx="50%"
                       cy="50%"
-                      outerRadius={95}
+                      outerRadius={90}
                       label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
                     >
                       {chartData.map((_, i) => <Cell key={i} fill={COLORS[i]} />)}
@@ -224,24 +187,28 @@ export default function StudentDashboard() {
             </div>
 
             {/* Class Summaries */}
-            <div className="space-y-3 mt-6">
+            <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {classSummaries.map(cls => (
-                <div key={cls.class_id} className="bg-white rounded-2xl shadow p-4 flex justify-between items-center">
-                  <span className="font-bold text-gray-700">{cls.class_name}</span>
-                  <div className="flex gap-4">
+                <div
+                  key={cls.class_id}
+                  className="p-4 rounded-3xl flex flex-col justify-between shadow-md hover:shadow-lg transition"
+                  style={{ backgroundColor: "#E0F2FE" }}
+                >
+                  <h4 className="font-bold text-black mb-2">{cls.class_name}</h4>
+                  <div className="flex justify-between mt-2">
                     <span className="text-green-700 font-semibold">Presents: {cls.present_count}</span>
-                    <span className="text-red-700 font-semibold">Absents: {cls.absent_count}</span>
+                    <span className="text-red-600 font-semibold">Absents: {cls.absent_count}</span>
                   </div>
+                  <span className="text-blue-700 text-sm mt-1">Total Sessions: {cls.total_sessions}</span>
                 </div>
               ))}
             </div>
           </>
         )}
 
-        {/* Other Tabs */}
         {activeTab === "enroll" && <EnrollClass userId={user?.id} />}
         {activeTab === "profile" && <StudentProfile userId={user?.id} />}
-        {activeTab === "attendance" && <AttendanceHistory userId={user?.id} />}
+         {user && <AttendanceChatbot teacherId={user.id} />}
       </main>
     </div>
   );

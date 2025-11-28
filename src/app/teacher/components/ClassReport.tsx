@@ -11,7 +11,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
-import { User, CalendarDays, CheckCircle, Clock } from "lucide-react";
+import { User, CalendarDays, CheckCircle, Clock, XCircle } from "lucide-react";
 
 interface ClassRecord {
   id: string;
@@ -41,8 +41,9 @@ export default function ClassReport({ assignedClasses }: ClassReportProps) {
   const [attendanceData, setAttendanceData] = useState<Record<string, {
     total: number;
     present: number;
+    absent: number;
     sessions: number;
-    chart: { date: string; present: number }[];
+    chart: { date: string; present: number; absent: number }[];
   }>>({});
 
   const [summary, setSummary] = useState<{
@@ -50,7 +51,7 @@ export default function ClassReport({ assignedClasses }: ClassReportProps) {
     totalSessions: number;
     totalPresent: number;
     totalAbsent: number;
-    monthlyChart: { month: string; present: number }[];
+    monthlyChart: { month: string; present: number; absent: number }[];
   }>({
     totalStudents: 0,
     totalSessions: 0,
@@ -67,7 +68,8 @@ export default function ClassReport({ assignedClasses }: ClassReportProps) {
       let overallStudents = 0;
       let overallSessions = 0;
       let overallPresent = 0;
-      const monthlyMap: Record<string, number> = {};
+      let overallAbsent = 0;
+      const monthlyMap: Record<string, { present: number; absent: number }> = {};
 
       for (const cls of assignedClasses) {
         const { data: sessions } = await supabase
@@ -78,7 +80,9 @@ export default function ClassReport({ assignedClasses }: ClassReportProps) {
         if (!sessions || !sessions.length) continue;
 
         let totalStudents = 0;
-        const chartData: { date: string; present: number }[] = [];
+        let classPresent = 0;
+        let classAbsent = 0;
+        const chartData: { date: string; present: number; absent: number }[] = [];
 
         for (const session of sessions) {
           const { data: attendance } = await supabase
@@ -87,42 +91,44 @@ export default function ClassReport({ assignedClasses }: ClassReportProps) {
             .eq("session_id", session.id);
 
           const presentCount = attendance?.filter((a: AttendanceRecord) => a.status === "Present").length ?? 0;
+          const absentCount = attendance?.filter((a: AttendanceRecord) => a.status === "Absent").length ?? 0;
           totalStudents = attendance?.length ?? totalStudents;
 
-          chartData.push({ date: session.session_date, present: presentCount });
+          chartData.push({ date: session.session_date, present: presentCount, absent: absentCount });
 
-          // Monthly aggregation
           const month = new Date(session.session_date).toLocaleString("default", { month: "short", year: "numeric" });
-          monthlyMap[month] = (monthlyMap[month] || 0) + presentCount;
-        }
+          if (!monthlyMap[month]) monthlyMap[month] = { present: 0, absent: 0 };
+          monthlyMap[month].present += presentCount;
+          monthlyMap[month].absent += absentCount;
 
-        const totalPresent = chartData.reduce((acc, c) => acc + c.present, 0);
+          classPresent += presentCount;
+          classAbsent += absentCount;
+        }
 
         data[cls.id] = {
           total: totalStudents,
-          present: totalPresent,
+          present: classPresent,
+          absent: classAbsent,
           sessions: sessions.length,
           chart: chartData,
         };
 
         overallStudents += totalStudents;
         overallSessions += sessions.length;
-        overallPresent += totalPresent;
+        overallPresent += classPresent;
+        overallAbsent += classAbsent;
       }
 
-      // Prepare monthly chart
       const monthlyChart = Object.entries(monthlyMap)
-        .map(([month, present]) => ({ month, present }))
+        .map(([month, val]) => ({ month, present: val.present, absent: val.absent }))
         .sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime());
-
-      const totalAbsent = overallStudents * overallSessions - overallPresent;
 
       setAttendanceData(data);
       setSummary({
         totalStudents: overallStudents,
         totalSessions: overallSessions,
         totalPresent: overallPresent,
-        totalAbsent,
+        totalAbsent: overallAbsent,
         monthlyChart,
       });
     };
@@ -140,7 +146,7 @@ export default function ClassReport({ assignedClasses }: ClassReportProps) {
       <h2 className="text-3xl font-bold mb-6 text-gray-800">Class Reports</h2>
 
       {/* ---------------- Summary Section ---------------- */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
         <div className="p-5 bg-white rounded-2xl shadow hover:shadow-lg transition">
           <div className="flex items-center gap-3">
             <User className="w-6 h-6 text-green-500" />
@@ -167,7 +173,15 @@ export default function ClassReport({ assignedClasses }: ClassReportProps) {
 
         <div className="p-5 bg-white rounded-2xl shadow hover:shadow-lg transition">
           <div className="flex items-center gap-3">
-            <Clock className="w-6 h-6 text-red-500" />
+            <XCircle className="w-6 h-6 text-red-500" />
+            <p className="font-semibold text-gray-700">Total Absent</p>
+          </div>
+          <p className="text-2xl font-bold text-gray-900 mt-2">{summary.totalAbsent}</p>
+        </div>
+
+        <div className="p-5 bg-white rounded-2xl shadow hover:shadow-lg transition">
+          <div className="flex items-center gap-3">
+            <Clock className="w-6 h-6 text-purple-500" />
             <p className="font-semibold text-gray-700">Average Attendance</p>
           </div>
           <p className="text-2xl font-bold text-gray-900 mt-2">{overallAttendancePercent}%</p>
@@ -185,7 +199,8 @@ export default function ClassReport({ assignedClasses }: ClassReportProps) {
                 <YAxis />
                 <Tooltip />
                 <Legend />
-                <Bar dataKey="present" name="Present Students" fill="#22c55e" radius={[4,4,0,0]} />
+                <Bar dataKey="present" name="Present" fill="#22c55e" radius={[4,4,0,0]} />
+                <Bar dataKey="absent" name="Absent" fill="#ef4444" radius={[4,4,0,0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -218,7 +233,10 @@ export default function ClassReport({ assignedClasses }: ClassReportProps) {
                   <CheckCircle className="w-5 h-5 text-green-400" /> Present: {report?.present ?? "-"}
                 </div>
                 <div className="flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-red-400" /> Average Attendance: {attendancePercent}%
+                  <XCircle className="w-5 h-5 text-red-400" /> Absent: {report?.absent ?? "-"}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-purple-400" /> Average Attendance: {attendancePercent}%
                 </div>
               </div>
 
@@ -230,7 +248,8 @@ export default function ClassReport({ assignedClasses }: ClassReportProps) {
                       <YAxis />
                       <Tooltip />
                       <Legend />
-                      <Bar dataKey="present" name="Present Students" fill="#22c55e" radius={[4,4,0,0]} />
+                      <Bar dataKey="present" name="Present" fill="#22c55e" radius={[4,4,0,0]} />
+                      <Bar dataKey="absent" name="Absent" fill="#ef4444" radius={[4,4,0,0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>

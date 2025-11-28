@@ -319,34 +319,45 @@ export default function TeacherDashboard() {
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 mt-6">
                 {assignedClasses.map(cls => {
                   const students = studentsByClass[cls.id] || [];
-                  const present = students.filter(s => s.status === "Present").length;
                   const finished = finishedClasses.includes(cls.id);
                   const status = getClassStatus(cls);
                   const disabled = isButtonDisabled(cls);
 
-                  let absentDisplay = 0;
-                  if (finished) absentDisplay = students.length - present;
-
                   return (
-                    <div key={cls.id} className={`p-6 bg-white rounded-2xl shadow hover:shadow-lg transition relative ${finished ? "opacity-60 pointer-events-none" : ""}`}>
-                      <span className={`absolute top-2 right-2 text-sm px-2 py-1 rounded ${status === "Done" ? "bg-green-600 text-white" : status === "Ongoing" ? "bg-yellow-400 text-black" : "bg-gray-300 text-gray-700"}`}>{status}</span>
+                    <div
+                      key={cls.id}
+                      className={`p-6 bg-white rounded-2xl shadow hover:shadow-lg transition relative ${
+                        finished ? "opacity-60 pointer-events-none" : ""
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-2 right-2 text-sm px-2 py-1 rounded ${
+                          finished ? "bg-green-600 text-white" :
+                          status === "Ongoing" ? "bg-yellow-400 text-black" :
+                          "bg-gray-300 text-gray-700"
+                        }`}
+                      >
+                        {finished ? "Finished Class" : status}
+                      </span>
 
                       <h3 className="text-xl font-bold">{cls.class_name}</h3>
-                      <p className="text-gray-600">{cls.block} • {cls.day_of_week} • {formatTime12Hour(cls.start_time)} - {formatTime12Hour(cls.end_time)}</p>
+                      <p className="text-gray-600">
+                        {cls.block} • {cls.day_of_week} • {formatTime12Hour(cls.start_time)} - {formatTime12Hour(cls.end_time)}
+                      </p>
 
-                      {!finished && status !== "Ongoing" ? null : (
-                        <div className="mt-4 space-y-1">
-                          <p>Total Students: {students.length}</p>
-                          <p className="text-green-600">Present: {present}</p>
-                          {finished && <p className="text-red-600">Absent: {absentDisplay}</p>}
-                        </div>
+                      {status === "Ongoing" && (
+                        <p className="mt-4 text-gray-700 font-medium">
+                          Students: {students.length}
+                        </p>
                       )}
 
                       <button
                         onClick={() => startAttendance(cls.id)}
-                        disabled={disabled}
+                        disabled={disabled || finished}
                         title={`Start class at ${formatTime12Hour(cls.start_time)}`}
-                        className={`mt-4 w-full px-4 py-2 rounded-xl font-bold transition ${disabled ? "bg-gray-300 text-gray-700 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700"}`}
+                        className={`mt-4 w-full px-4 py-2 rounded-xl font-bold transition ${
+                          disabled || finished ? "bg-gray-300 text-gray-700 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700"
+                        }`}
                       >
                         Start Attendance
                       </button>

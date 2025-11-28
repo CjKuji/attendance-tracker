@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
-// ----------- INTERFACES -----------
 interface ClassRecord {
   id: string;
   class_name: string;
@@ -30,45 +29,47 @@ export default function EnrollClasses({ userId }: { userId: string }) {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // ------------------------------
-  // FETCH STUDENT PROFILE
-  // ------------------------------
+  // ------------------------
+  // Helper: Format time 12hr
+  // ------------------------
+  const formatTime12hr = (time24: string) => {
+    if (!time24) return "";
+    const [hourStr, minute] = time24.split(":");
+    let hour = parseInt(hourStr, 10);
+    const ampm = hour >= 12 ? "PM" : "AM";
+    hour = hour % 12 || 12;
+    return `${hour}:${minute} ${ampm}`;
+  };
+
+  // ------------------------
+  // Fetch student profile
+  // ------------------------
   const fetchProfile = async () => {
     if (!userId) return;
-
     try {
       const { data, error } = await supabase
         .from("students")
         .select("id, course_id, year_level")
         .eq("id", userId)
         .maybeSingle();
-
       if (error) throw error;
       setProfile(data);
     } catch (err) {
-      console.error("Error fetching profile:", err);
+      console.error(err);
       setError("Failed to load student profile.");
     }
   };
 
-  // ------------------------------
-  // FETCH CLASSES FOR STUDENT'S COURSE + YEAR LEVEL
-  // ------------------------------
+  // ------------------------
+  // Fetch classes
+  // ------------------------
   const fetchClasses = async () => {
     if (!profile) return;
-
     try {
       const { data, error } = await supabase
         .from("classes")
         .select(`
-          id,
-          class_name,
-          course_id,
-          year_level,
-          block,
-          day_of_week,
-          start_time,
-          end_time,
+          id, class_name, course_id, year_level, block, day_of_week, start_time, end_time,
           courses:course_id(name),
           teacher:teacher_id(first_name,last_name)
         `)
@@ -88,19 +89,18 @@ export default function EnrollClasses({ userId }: { userId: string }) {
 
       setClasses(formatted);
     } catch (err) {
-      console.error("Error fetching classes:", err);
+      console.error(err);
       setError("Failed to load classes.");
     } finally {
       setLoading(false);
     }
   };
 
-  // ------------------------------
-  // FETCH ENROLLED CLASSES
-  // ------------------------------
+  // ------------------------
+  // Fetch enrolled classes
+  // ------------------------
   const fetchEnrolled = async () => {
     if (!userId) return;
-
     try {
       const { data, error } = await supabase
         .from("class_enrollment")
@@ -126,31 +126,24 @@ export default function EnrollClasses({ userId }: { userId: string }) {
 
       setEnrolledClasses(enrolled);
     } catch (err) {
-      console.error("Error fetching enrolled classes:", err);
+      console.error(err);
     }
   };
 
-  // ------------------------------
-  // ENROLL FUNCTION
-  // ------------------------------
+  // ------------------------
+  // Enroll class
+  // ------------------------
   const handleEnroll = async (classId: string) => {
     if (!userId) return;
     setError(null);
-
     try {
-      const { error } = await supabase.from("class_enrollment").insert([
-        { student_id: userId, class_id: classId },
-      ]);
-
+      const { error } = await supabase.from("class_enrollment").insert([{ student_id: userId, class_id: classId }]);
       if (error) throw error;
 
-      // Update enrolledClasses locally
       const enrolledClass = classes.find((c) => c.id === classId);
-      if (enrolledClass) {
-        setEnrolledClasses([...enrolledClasses, enrolledClass]);
-      }
+      if (enrolledClass) setEnrolledClasses([...enrolledClasses, enrolledClass]);
     } catch (err: any) {
-      console.error("Enroll error:", err);
+      console.error(err);
       setError(
         err?.message?.includes("already enrolled in a class in block")
           ? "You cannot enroll in a class with a different block."
@@ -159,105 +152,119 @@ export default function EnrollClasses({ userId }: { userId: string }) {
     }
   };
 
-  // ------------------------------
-  // INITIAL FETCHES
-  // ------------------------------
-  useEffect(() => {
-    fetchProfile();
-  }, [userId]);
+  useEffect(() => { fetchProfile(); }, [userId]);
+  useEffect(() => { if (profile) { fetchClasses(); fetchEnrolled(); } }, [profile]);
 
-  useEffect(() => {
-    if (profile) {
-      fetchClasses();
-      fetchEnrolled();
-    }
-  }, [profile]);
-
-  // ------------------------------
-  // HELPER: Check if a class can be enrolled (must match block of already enrolled)
-  // ------------------------------
   const canEnrollInBlock = (clsBlock: string) => {
     if (enrolledClasses.length === 0) return true;
-    const enrolledBlock = enrolledClasses[0].block;
-    return clsBlock === enrolledBlock;
+    return enrolledClasses[0].block === clsBlock;
   };
 
-  // ------------------------------
-  // GROUP CLASSES BY BLOCK
-  // ------------------------------
   const groupedByBlock = classes.reduce(
     (acc: Record<string, ClassRecord[]>, cls) => {
       if (!acc[cls.block]) acc[cls.block] = [];
       acc[cls.block].push(cls);
       return acc;
-    },
-    {}
+    }, {}
   );
 
-  // ------------------------------
-  // RENDER
-  // ------------------------------
+  // ------------------------
+  // Render
+  // ------------------------
   return (
     <div className="p-6 space-y-6">
-      <h2 className="text-3xl font-bold">Enroll in Classes</h2>
-      {error && <div className="text-red-600 font-medium">{error}</div>}
+      <h2 className="text-3xl font-bold text-black">Enroll in Classes</h2>
+      {error && <div className="text-red-600 font-semibold">{error}</div>}
 
       {loading ? (
-        <p>Loading classes...</p>
+        <p className="text-black font-medium">Loading classes...</p>
       ) : classes.length === 0 ? (
-        <p>No classes available for enrollment.</p>
+        <p className="text-black font-medium">No classes available for enrollment.</p>
       ) : (
         Object.entries(groupedByBlock).map(([block, blockClasses]) => (
-          <div key={block} className="bg-white shadow rounded-2xl p-6 overflow-x-auto">
-            <h3 className="text-xl font-semibold mb-4">Block {block}</h3>
+          <div key={block} className="bg-white shadow-xl rounded-3xl p-6 space-y-4">
+            <h3 className="text-xl font-semibold text-black">Block {block}</h3>
 
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 text-gray-700 uppercase text-xs">
-                  <th className="px-3 py-2 text-left">Class Name</th>
-                  <th className="px-3 py-2 text-left">Course</th>
-                  <th className="px-3 py-2 text-left">Teacher</th>
-                  <th className="px-3 py-2 text-left">Year</th>
-                  <th className="px-3 py-2 text-left">Day</th>
-                  <th className="px-3 py-2 text-left">Time</th>
-                  <th className="px-3 py-2 text-left">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {blockClasses.map((cls) => {
-                  const enrolled = enrolledClasses.some((e) => e.id === cls.id);
-                  const canEnroll = !enrolled && canEnrollInBlock(cls.block);
+            {/* Desktop Table */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="min-w-full table-auto border-collapse">
+                <thead>
+                  <tr className="bg-green-100 text-black uppercase text-sm font-semibold">
+                    <th className="px-3 py-2 text-left">Class Name</th>
+                    <th className="px-3 py-2 text-left">Course</th>
+                    <th className="px-3 py-2 text-left">Teacher</th>
+                    <th className="px-3 py-2 text-left">Year</th>
+                    <th className="px-3 py-2 text-left">Day</th>
+                    <th className="px-3 py-2 text-left">Time</th>
+                    <th className="px-3 py-2 text-left">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {blockClasses.map((cls) => {
+                    const enrolled = enrolledClasses.some((e) => e.id === cls.id);
+                    const canEnroll = !enrolled && canEnrollInBlock(cls.block);
+                    return (
+                      <tr key={cls.id} className="border-b hover:bg-green-50 transition">
+                        <td className="px-3 py-2 font-medium text-black">{cls.class_name}</td>
+                        <td className="px-3 py-2 text-black">{cls.course_name}</td>
+                        <td className="px-3 py-2 text-black">{cls.teacher_name}</td>
+                        <td className="px-3 py-2 text-black">{cls.year_level}</td>
+                        <td className="px-3 py-2 text-black">{cls.day_of_week}</td>
+                        <td className="px-3 py-2 text-black">
+                          {formatTime12hr(cls.start_time)} - {formatTime12hr(cls.end_time)}
+                        </td>
+                        <td className="px-3 py-2">
+                          <button
+                            disabled={!canEnroll}
+                            onClick={() => handleEnroll(cls.id)}
+                            className={`px-3 py-1 rounded font-semibold text-white transition ${
+                              !canEnroll
+                                ? "bg-gray-400 cursor-not-allowed"
+                                : enrolled
+                                ? "bg-blue-500 cursor-default"
+                                : "bg-green-600 hover:bg-green-700"
+                            }`}
+                          >
+                            {enrolled ? "Enrolled" : !canEnroll ? "Block Taken" : "Enroll"}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
 
-                  return (
-                    <tr key={cls.id} className="border-t hover:bg-gray-50 transition">
-                      <td className="px-3 py-2 font-medium">{cls.class_name}</td>
-                      <td className="px-3 py-2">{cls.course_name}</td>
-                      <td className="px-3 py-2">{cls.teacher_name}</td>
-                      <td className="px-3 py-2">{cls.year_level}</td>
-                      <td className="px-3 py-2">{cls.day_of_week}</td>
-                      <td className="px-3 py-2">{cls.start_time} - {cls.end_time}</td>
-                      <td className="px-3 py-2">
-                        <button
-                          disabled={!canEnroll}
-                          onClick={() => handleEnroll(cls.id)}
-                          className={`px-3 py-1 rounded font-semibold text-white ${
-                            !canEnroll
-                              ? "bg-gray-400 cursor-not-allowed"
-                              : "bg-green-600 hover:bg-green-700"
-                          }`}
-                        >
-                          {enrolled
-                            ? "Enrolled"
-                            : !canEnroll
-                            ? "Block Taken"
-                            : "Enroll"}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            {/* Mobile Cards */}
+            <div className="md:hidden space-y-4">
+              {blockClasses.map((cls) => {
+                const enrolled = enrolledClasses.some((e) => e.id === cls.id);
+                const canEnroll = !enrolled && canEnrollInBlock(cls.block);
+                return (
+                  <div key={cls.id} className="p-4 bg-green-50 rounded-2xl shadow flex flex-col space-y-2">
+                    <h4 className="font-bold text-black text-lg">{cls.class_name}</h4>
+                    <p className="text-black"><span className="font-semibold">Course:</span> {cls.course_name}</p>
+                    <p className="text-black"><span className="font-semibold">Teacher:</span> {cls.teacher_name}</p>
+                    <p className="text-black"><span className="font-semibold">Year:</span> {cls.year_level}</p>
+                    <p className="text-black"><span className="font-semibold">Day:</span> {cls.day_of_week}</p>
+                    <p className="text-black"><span className="font-semibold">Time:</span> {formatTime12hr(cls.start_time)} - {formatTime12hr(cls.end_time)}</p>
+                    <button
+                      disabled={!canEnroll}
+                      onClick={() => handleEnroll(cls.id)}
+                      className={`mt-2 py-2 rounded font-semibold text-white transition ${
+                        !canEnroll
+                          ? "bg-gray-400 cursor-not-allowed"
+                          : enrolled
+                          ? "bg-blue-500 cursor-default"
+                          : "bg-green-600 hover:bg-green-700"
+                      }`}
+                    >
+                      {enrolled ? "Enrolled" : !canEnroll ? "Block Taken" : "Enroll"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         ))
       )}
