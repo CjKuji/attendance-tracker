@@ -39,7 +39,7 @@ type ClassRow = {
   day_of_week: string;
   start_time: string;
   end_time: string;
-  courses?: Course[] | null;
+  courses?: { name: string }[] | null; // simplified
 };
 
 // ---------- Component ----------
@@ -49,20 +49,17 @@ export default function TeacherProfile() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [classes, setClasses] = useState<ClassRow[]>([]);
 
-  // Edit modal state
   const [editing, setEditing] = useState(false);
   const [editFirstName, setEditFirstName] = useState("");
   const [editLastName, setEditLastName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editDepartmentId, setEditDepartmentId] = useState<string | null>(null);
 
-  // Password state
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // UI state
   const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -79,8 +76,6 @@ export default function TeacherProfile() {
       return iso;
     }
   };
-
-  const shortId = (id?: string) => (id ? id.slice(0, 8) : "-");
 
   const durationHours = (start: string, end: string) => {
     try {
@@ -108,7 +103,6 @@ export default function TeacherProfile() {
     const fetchAll = async () => {
       setLoading(true);
 
-      // Get current user
       const { data: userData, error: userErr } = await supabase.auth.getUser();
       const user = userData?.user;
       if (userErr || !user) {
@@ -116,55 +110,50 @@ export default function TeacherProfile() {
         setLoading(false);
         return;
       }
-
       const uid = user.id;
 
-      // Fetch teacher profile
+      // --- Fetch teacher profile ---
       const { data: tdata, error: terr } = await supabase
-        .from<Teacher>("teachers") // ✅ only one generic
+        .from("teachers")
         .select("*")
         .eq("id", uid)
         .single();
+      const teacherData = tdata as Teacher | null;
 
       if (terr) {
         console.error("fetch teacher:", terr);
         if (mounted) setToast({ type: "error", message: "Failed to fetch teacher profile." });
-      } else if (mounted && tdata) {
-        setTeacher(tdata);
-        setEditFirstName(tdata.first_name);
-        setEditLastName(tdata.last_name);
-        setEditEmail(tdata.email);
-        setEditDepartmentId(tdata.department_id || null);
+      } else if (mounted && teacherData) {
+        setTeacher(teacherData);
+        setEditFirstName(teacherData.first_name);
+        setEditLastName(teacherData.last_name);
+        setEditEmail(teacherData.email);
+        setEditDepartmentId(teacherData.department_id || null);
       }
 
-      // Fetch departments
+      // --- Fetch departments ---
       const { data: deps, error: dErr } = await supabase
-        .from<Department>("departments") // ✅ only one generic
+        .from("departments")
         .select("*")
         .order("name");
+      const departmentsData = deps as Department[];
+      if (!dErr && mounted) setDepartments(departmentsData || []);
 
-      if (!dErr && mounted) setDepartments(deps || []);
-
-      // Fetch classes with courses
+      // --- Fetch classes ---
       const { data: classRows, error: cErr } = await supabase
-        .from<ClassRow>("classes") // ✅ only one generic
+        .from("classes")
         .select("id, class_name, year_level, block, day_of_week, start_time, end_time, courses(name)")
         .eq("teacher_id", uid)
         .order("day_of_week");
-
-      if (!cErr && mounted) setClasses(classRows || []);
-      if (cErr) {
-        console.error("fetch classes:", cErr);
-        if (mounted) setToast({ type: "error", message: "Failed to fetch classes." });
-      }
+      const classesData = classRows as ClassRow[];
+      if (!cErr && mounted) setClasses(classesData || []);
+      if (cErr) console.error("fetch classes:", cErr);
 
       setLoading(false);
     };
 
     fetchAll();
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, []);
 
   const totalClasses = classes.length;
@@ -327,7 +316,7 @@ export default function TeacherProfile() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={closeEdit} />
           <div className="relative w-full max-w-xl bg-white/90 backdrop-blur-2xl shadow-2xl rounded-2xl border border-slate-200 p-6 sm:p-8 overflow-y-auto max-h-[95vh]">
-            {/* Form content (personal info + password) as before */}
+            {/* Form content (personal info + password) */}
           </div>
         </div>
       )}
