@@ -11,32 +11,40 @@ export default function HomePage() {
   useEffect(() => {
     const checkUser = async () => {
       try {
-        // Get the current session
+        // Get current session
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         if (sessionError) throw sessionError;
 
         if (!session) {
-          // Not logged in → redirect to login
           router.push("/login");
           return;
         }
 
         const userId = session.user.id;
 
-        // Fetch role from profiles table
-        const { data: profile, error: profileError } = await supabase
-          .from("profiles")
-          .select("role")
+        // Fetch role from teachers table
+        const { data: teacher, error: teacherError } = await supabase
+          .from("teachers")
+          .select("id") // or any field needed
           .eq("id", userId)
-          .single();
+          .maybeSingle(); // safer than .single()
 
-        if (profileError) throw profileError;
+        if (teacherError) throw teacherError;
 
-        // Redirect based on role
-        if (profile?.role === "admin") {
-          router.push("/admin");
+        if (teacher) {
+          router.push("/teacher"); // redirect to teacher dashboard
         } else {
-          router.push("/student");
+          // optionally check students table
+          const { data: student, error: studentError } = await supabase
+            .from("students")
+            .select("id")
+            .eq("id", userId)
+            .maybeSingle();
+
+          if (studentError) throw studentError;
+
+          if (student) router.push("/student");
+          else router.push("/login"); // fallback
         }
 
       } catch (err: any) {
