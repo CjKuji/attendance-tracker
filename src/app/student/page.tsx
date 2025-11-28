@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { BarChart3, LogOut, UserCircle, CheckCircle } from "lucide-react";
+import { BarChart3, LogOut, UserCircle, CheckCircle, Menu, X } from "lucide-react";
 import StudentProfile from "./components/StudentProfile";
 import EnrollClass from "./components/EnrollClass";
 import AttendanceChatbot from "./components/AttendanceChatbot";
@@ -26,7 +26,7 @@ interface ClassSummary {
   total_sessions: number;
 }
 
-const COLORS = ["#10B981", "#EF4444"]; // green & red
+const COLORS = ["#3B82F6", "#EF4444", "#FBBF24"]; // Blue, Red, Yellow
 type Tab = "dashboard" | "profile" | "enroll";
 
 export default function StudentDashboard() {
@@ -37,6 +37,7 @@ export default function StudentDashboard() {
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Auth & session
   useEffect(() => {
@@ -101,43 +102,67 @@ export default function StudentDashboard() {
   };
 
   if (loading) return (
-    <div className="flex items-center justify-center h-screen bg-white">
-      <span className="text-lg font-bold text-black">Loading...</span>
+    <div className="flex items-center justify-center h-screen bg-gray-50">
+      <span className="text-lg font-bold text-gray-800">Loading...</span>
     </div>
   );
 
   return (
-    <div className="flex h-screen overflow-hidden bg-white">
+    <div className="flex h-screen bg-gray-50">
       {/* Sidebar */}
-      <aside className="w-64 bg-gradient-to-b from-green-600 to-green-500 text-white flex flex-col justify-between p-6">
-        <h1 className="text-2xl font-extrabold mb-8 text-center tracking-tight drop-shadow-md">GC Attendance</h1>
+      <aside
+        className={`fixed inset-y-0 left-0 w-64 bg-gradient-to-b from-indigo-600 to-indigo-500 text-white z-50 transform transition-transform duration-300 ease-in-out
+        ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 md:relative md:translate-x-0 flex-shrink-0`}
+      >
+        <div className="flex flex-col justify-between h-full p-6">
+          <div>
+            <h1 className="text-2xl font-extrabold mb-8 text-center tracking-tight drop-shadow-md">GC Attendance</h1>
+            <nav className="flex flex-col gap-3">
+              {[
+                { tab: "dashboard", icon: <BarChart3 className="w-5 h-5" />, label: "Dashboard" },
+                { tab: "enroll", icon: <CheckCircle className="w-5 h-5" />, label: "Enroll Class" },
+                { tab: "profile", icon: <UserCircle className="w-5 h-5" />, label: "Profile" },
+              ].map(item => (
+                <button
+                  key={item.tab}
+                  onClick={() => { setActiveTab(item.tab as Tab); setSidebarOpen(false); }}
+                  className={`flex items-center gap-3 p-3 rounded-xl font-semibold hover:bg-indigo-700 transition ${
+                    activeTab === item.tab ? "bg-indigo-800 shadow-lg" : ""
+                  }`}
+                >
+                  {item.icon}
+                  <span className="text-white text-base">{item.label}</span>
+                </button>
+              ))}
+            </nav>
+          </div>
 
-        <nav className="flex flex-col gap-3">
-          {[
-            { tab: "dashboard", icon: <BarChart3 className="w-5 h-5" />, label: "Dashboard" },
-            { tab: "enroll", icon: <CheckCircle className="w-5 h-5" />, label: "Enroll Class" },
-            { tab: "profile", icon: <UserCircle className="w-5 h-5" />, label: "Profile" },
-          ].map(item => (
-            <button
-              key={item.tab}
-              onClick={() => setActiveTab(item.tab as Tab)}
-              className={`flex items-center gap-3 p-3 rounded-xl font-semibold hover:bg-green-700 transition ${
-                activeTab === item.tab ? "bg-green-800 shadow-lg" : ""
-              }`}
-            >
-              {item.icon}
-              <span className="text-white text-base">{item.label}</span>
-            </button>
-          ))}
-        </nav>
-
-        <button
-          onClick={handleLogout}
-          className="mt-8 w-full py-3 bg-red-600 hover:bg-red-700 rounded-xl font-bold transition flex justify-center items-center gap-2"
-        >
-          <LogOut className="w-5 h-5" /> Logout
-        </button>
+          <button
+            onClick={handleLogout}
+            className="mt-8 w-full py-3 bg-red-600 hover:bg-red-700 rounded-xl font-bold transition flex justify-center items-center gap-2"
+          >
+            <LogOut className="w-5 h-5" /> Logout
+          </button>
+        </div>
       </aside>
+
+      {/* Hamburger for mobile */}
+      <div className="md:hidden fixed top-4 left-4 z-50">
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className="p-2 rounded-md bg-white shadow-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        >
+          {sidebarOpen ? <X className="w-6 h-6 text-indigo-600" /> : <Menu className="w-6 h-6 text-indigo-600" />}
+        </button>
+      </div>
+
+      {/* Overlay for mobile */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/30 z-40 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto p-6 sm:p-8">
@@ -145,21 +170,20 @@ export default function StudentDashboard() {
 
         {activeTab === "dashboard" && studentSummary && (
           <>
-            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight mb-6 text-black">
-              Welcome, <span className="text-green-700">{user?.email}</span>
+            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight mb-6 text-gray-800">
+              Welcome, <span className="text-indigo-600">{user?.email}</span>
             </h2>
 
             {/* Summary Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
               {[
-                { label: "Present", value: studentSummary.total_present, color: "#10B981" },
-                { label: "Absent", value: studentSummary.total_absent, color: "#EF4444" },
-                { label: "Total Classes", value: studentSummary.total_classes, color: "#3B82F6" },
+                { label: "Present", value: studentSummary.total_present, color: "bg-green-500/80" },
+                { label: "Absent", value: studentSummary.total_absent, color: "bg-red-500/80" },
+                { label: "Total Classes", value: studentSummary.total_classes, color: "bg-indigo-500/80" },
               ].map((card) => (
                 <div
                   key={card.label}
-                  className="rounded-3xl p-6 flex flex-col items-center justify-center transform hover:scale-105 transition shadow-md"
-                  style={{ backgroundColor: card.color }}
+                  className={`rounded-3xl p-6 flex flex-col items-center justify-center transform hover:scale-105 transition shadow-md ${card.color}`}
                 >
                   <span className="text-white text-3xl font-extrabold">{card.value}</span>
                   <span className="text-white mt-2 font-semibold">{card.label}</span>
@@ -169,7 +193,7 @@ export default function StudentDashboard() {
 
             {/* Attendance Chart */}
             <div className="bg-white shadow-md rounded-3xl p-6 mt-8">
-              <h3 className="text-xl sm:text-2xl font-bold mb-4 text-black">Attendance Overview</h3>
+              <h3 className="text-xl sm:text-2xl font-bold mb-4 text-gray-800">Attendance Overview</h3>
               <div className="w-full h-72 sm:h-96">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
@@ -196,15 +220,14 @@ export default function StudentDashboard() {
               {classSummaries.map(cls => (
                 <div
                   key={cls.class_id}
-                  className="p-4 rounded-3xl flex flex-col justify-between shadow-md hover:shadow-lg transition"
-                  style={{ backgroundColor: "#E0F2FE" }}
+                  className="p-4 rounded-3xl flex flex-col justify-between shadow-md hover:shadow-lg transition bg-gradient-to-r from-indigo-100 to-indigo-50"
                 >
-                  <h4 className="font-bold text-black mb-2">{cls.class_name}</h4>
+                  <h4 className="font-bold text-gray-800 mb-2">{cls.class_name}</h4>
                   <div className="flex justify-between mt-2">
-                    <span className="text-green-700 font-semibold">Presents: {cls.present_count}</span>
-                    <span className="text-red-600 font-semibold">Absents: {cls.absent_count}</span>
+                    <span className="text-green-600 font-semibold">Presents: {cls.present_count}</span>
+                    <span className="text-red-500 font-semibold">Absents: {cls.absent_count}</span>
                   </div>
-                  <span className="text-blue-700 text-sm mt-1">Total Sessions: {cls.total_sessions}</span>
+                  <span className="text-indigo-600 text-sm mt-1">Total Sessions: {cls.total_sessions}</span>
                 </div>
               ))}
             </div>
@@ -213,7 +236,7 @@ export default function StudentDashboard() {
 
         {activeTab === "enroll" && <EnrollClass userId={user?.id} />}
         {activeTab === "profile" && <StudentProfile userId={user?.id} />}
-        {user && <AttendanceChatbot teacherId={user.id} />}
+        {user && <AttendanceChatbot studentId={user.id} />}
       </main>
     </div>
   );

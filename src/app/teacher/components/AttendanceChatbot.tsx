@@ -1,8 +1,10 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
+import { Bot, User, Send, Loader2 } from "lucide-react";
 
 interface Props {
-  teacherId: string;
+  teacherId?: string; // optional for teachers
+  studentId?: string; // optional for students
 }
 
 interface Message {
@@ -10,7 +12,7 @@ interface Message {
   text: string;
 }
 
-export default function AttendanceChatbot({ teacherId }: Props) {
+export default function AttendanceChatbot({ teacherId, studentId }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
@@ -18,7 +20,7 @@ export default function AttendanceChatbot({ teacherId }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const handleAsk = async () => {
-    if (!question.trim()) return;
+    if (!question.trim() || loading) return;
 
     const userMessage: Message = { sender: "user", text: question };
     setMessages((prev) => [...prev, userMessage]);
@@ -29,26 +31,22 @@ export default function AttendanceChatbot({ teacherId }: Props) {
       const res = await fetch("/api/attendance-chatbot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ teacherId, question: userMessage.text }),
+        body: JSON.stringify({ teacherId, studentId, question: userMessage.text }),
       });
 
       const data = await res.json();
       const botMessage: Message = {
         sender: "bot",
-        text: res.ok ? data.answer || "No response" : `Error: ${data.error}`,
+        text: res.ok ? data.answer || "No response" : `Error: ${data.error || "Bad Request"}`,
       };
       setMessages((prev) => [...prev, botMessage]);
     } catch (err: any) {
-      setMessages((prev) => [
-        ...prev,
-        { sender: "bot", text: `Fetch error: ${err.message}` },
-      ]);
+      setMessages((prev) => [...prev, { sender: "bot", text: `Error: ${err.message}` }]);
     } finally {
       setLoading(false);
     }
   };
 
-  // Auto-scroll to bottom
   useEffect(() => {
     scrollRef.current?.scrollTo({
       top: scrollRef.current.scrollHeight,
@@ -58,79 +56,61 @@ export default function AttendanceChatbot({ teacherId }: Props) {
 
   return (
     <>
-      {/* Chat bubble button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`fixed bottom-6 right-6 bg-blue-600 text-white rounded-full p-4 shadow-lg hover:bg-blue-700 z-50 transition-transform ${
-          isOpen ? "rotate-45" : ""
-        }`}
-        title="Open Chat"
+        className={`fixed bottom-6 right-6 bg-blue-600 text-white p-4 rounded-full shadow-xl hover:bg-blue-700 transition-all z-[999] ${isOpen ? "rotate-90" : ""}`}
       >
         💬
       </button>
 
-      {/* Chat window */}
       <div
-        className={`fixed bottom-20 right-6 w-80 max-h-[500px] bg-white rounded-2xl shadow-lg flex flex-col overflow-hidden transition-transform z-50 ${
-          isOpen ? "translate-y-0" : "translate-y-[200%]"
+        className={`fixed bottom-24 right-6 w-80 md:w-96 max-h-[550px] bg-white border border-blue-200 shadow-2xl rounded-2xl overflow-hidden flex flex-col transition-all duration-300 z-[999] ${
+          isOpen ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10 pointer-events-none"
         }`}
       >
-        {/* Header */}
-        <div className="bg-blue-600 text-white px-4 py-3 flex justify-between items-center">
-          <h4 className="font-bold">AI Attendance Assistant</h4>
-          <button onClick={() => setIsOpen(false)} className="text-white font-bold">
-            ✕
-          </button>
+        <div className="bg-blue-600 text-white px-4 py-3 flex items-center justify-between shadow">
+          <div className="flex items-center gap-2">
+            <Bot size={20} />
+            <h4 className="font-semibold">AI Attendance Assistant</h4>
+          </div>
+          <button onClick={() => setIsOpen(false)} className="hover:text-gray-100">✕</button>
         </div>
 
-        {/* Messages */}
-        <div
-          ref={scrollRef}
-          className="flex-1 p-4 overflow-y-auto space-y-2 bg-gray-50"
-        >
+        <div ref={scrollRef} className="flex-1 p-4 overflow-y-auto bg-white space-y-3">
           {messages.map((msg, idx) => (
-            <div
-              key={idx}
-              className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
-            >
-              <div
-                className={`px-4 py-2 rounded-xl max-w-[70%] break-words ${
-                  msg.sender === "user"
-                    ? "bg-blue-600 text-white rounded-br-none"
-                    : "bg-gray-200 text-gray-800 rounded-bl-none"
-                }`}
-              >
+            <div key={idx} className={`flex items-end gap-2 ${msg.sender === "user" ? "justify-end" : "justify-start"}`}>
+              {msg.sender === "bot" && <div className="p-2 bg-blue-600 text-white rounded-full shadow"><Bot size={16} /></div>}
+              <div className={`px-4 py-2 rounded-2xl max-w-[75%] shadow ${msg.sender === "user" ? "bg-blue-600 text-white rounded-br-none" : "bg-blue-100 text-black rounded-bl-none"}`}>
                 {msg.text}
               </div>
+              {msg.sender === "user" && <div className="p-2 bg-blue-600 text-white rounded-full shadow"><User size={16} /></div>}
             </div>
           ))}
+
           {loading && (
-            <div className="flex justify-start">
-              <div className="px-4 py-2 rounded-xl bg-gray-200 text-gray-800 animate-pulse rounded-bl-none">
-                Typing...
+            <div className="flex items-center gap-2">
+              <div className="p-2 bg-blue-600 text-white rounded-full shadow"><Bot size={16} /></div>
+              <div className="flex gap-1">
+                <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></span>
+                <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce delay-150"></span>
+                <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce delay-300"></span>
               </div>
             </div>
           )}
         </div>
 
-        {/* Input */}
-        <div className="p-3 border-t flex items-center gap-2">
+        <div className="p-3 bg-white border-t flex items-center gap-2">
           <input
             type="text"
-            placeholder="Ask something like: How many absents today?"
-            className="flex-1 border rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+            placeholder="Ask anything about attendance..."
+            className="flex-1 px-4 py-2 border border-blue-300 text-black rounded-full focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-40"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleAsk();
-            }}
-          />
-          <button
-            onClick={handleAsk}
+            onKeyDown={(e) => e.key === "Enter" && handleAsk()}
             disabled={loading}
-            className="bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700 disabled:opacity-50"
-          >
-            Send
+          />
+          <button onClick={handleAsk} disabled={loading} className="bg-blue-600 text-white p-3 rounded-full shadow hover:bg-blue-700 disabled:opacity-40">
+            {loading ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
           </button>
         </div>
       </div>

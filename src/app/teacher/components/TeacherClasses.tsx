@@ -11,6 +11,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { User, BookOpen, Check } from "lucide-react";
 
+// ---------- Types ----------
 interface ClassRecord {
   id: string;
   class_name: string;
@@ -35,11 +36,17 @@ interface TeacherClassesProps {
   onClassAdded: (newClass: ClassRecord) => void;
 }
 
-export default function TeacherClasses({ teacherId, onClose, onClassAdded }: TeacherClassesProps) {
+// ---------- Component ----------
+export default function TeacherClasses({
+  teacherId,
+  onClose,
+  onClassAdded,
+}: TeacherClassesProps) {
   const [classes, setClasses] = useState<ClassRecord[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
   const [teacherDeptId, setTeacherDeptId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const [newClass, setNewClass] = useState({
     class_name: "",
@@ -51,9 +58,7 @@ export default function TeacherClasses({ teacherId, onClose, onClassAdded }: Tea
     end_time: "",
   });
 
-  const [error, setError] = useState<string | null>(null);
-
-  // Fetch teacher department
+  // ---------- Fetch Data ----------
   const fetchTeacherDepartment = async () => {
     try {
       const { data, error } = await supabase
@@ -87,7 +92,9 @@ export default function TeacherClasses({ teacherId, onClose, onClassAdded }: Tea
     try {
       const { data, error } = await supabase
         .from("classes")
-        .select(`id, class_name, course_id, year_level, block, day_of_week, start_time, end_time, created_at, courses(name)`)
+        .select(
+          `id, class_name, course_id, year_level, block, day_of_week, start_time, end_time, created_at, courses(name)`
+        )
         .eq("teacher_id", teacherId)
         .order("created_at", { ascending: false });
 
@@ -115,7 +122,10 @@ export default function TeacherClasses({ teacherId, onClose, onClassAdded }: Tea
     fetchClasses();
   }, [teacherDeptId]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  // ---------- Handlers ----------
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
     setNewClass({ ...newClass, [e.target.name]: e.target.value });
   };
 
@@ -160,6 +170,7 @@ export default function TeacherClasses({ teacherId, onClose, onClassAdded }: Tea
     Sunday: "bg-purple-100 text-purple-700",
   };
 
+  // ---------- Render ----------
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 animate-fadeIn bg-black/50">
       <div className="relative w-full max-w-6xl bg-white/95 backdrop-blur-md rounded-3xl shadow-2xl p-8 overflow-y-auto max-h-[95vh]">

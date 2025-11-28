@@ -66,6 +66,18 @@ CREATE TABLE teachers (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
+INSERT INTO teachers (
+    id, first_name, last_name, email, department_id
+)
+SELECT
+    '0f409208-bedb-4051-bc3f-2ac5e85b8a0d',
+    'Joms',
+    'Teacher',
+    'penixkujs@gmail.com',
+    d.id
+FROM departments d
+WHERE d.name = 'CCS';
+
 -- ============================================
 -- STUDENTS
 -- ============================================
@@ -79,6 +91,22 @@ CREATE TABLE students (
     year_level VARCHAR(20) NOT NULL,
     created_at TIMESTAMPTZ DEFAULT now()
 );
+
+INSERT INTO students (
+    id, first_name, last_name, email,
+    department_id, course_id, year_level
+)
+SELECT
+    '27cf3d0d-77c2-4e70-998d-732a784263e3',
+    'Sample',
+    'Student',
+    'cjbugero@gmail.com',
+    d.id,
+    c.id,
+    '2nd Year'
+FROM departments d
+JOIN courses c ON c.name = 'BSIT' AND c.department_id = d.id
+WHERE d.name = 'CCS';
 
 -- ============================================
 -- CLASSES (Created by teachers)

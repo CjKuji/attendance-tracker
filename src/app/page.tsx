@@ -27,7 +27,7 @@ export default function HomePage() {
           .from("teachers")
           .select("id") // or any field needed
           .eq("id", userId)
-          .maybeSingle(); // safer than .single()
+          .maybeSingle();
 
         if (teacherError) throw teacherError;
 

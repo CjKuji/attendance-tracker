@@ -19,14 +19,6 @@ interface ClassRecord {
   block: string;
 }
 
-interface SessionRecord {
-  id: string;
-  class_id: string;
-  session_date: string;
-  started_at: string;
-  ended_at: string | null;
-}
-
 interface AttendanceRecord {
   student_id: string;
   status: "Present" | "Absent";
@@ -142,56 +134,32 @@ export default function ClassReport({ assignedClasses }: ClassReportProps) {
       : "0";
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-3xl font-bold mb-6 text-gray-800">Class Reports</h2>
+    <div className="max-w-5xl mx-auto p-4 sm:p-6 space-y-6">
+      <h2 className="text-3xl font-bold text-slate-800">Class Reports</h2>
 
       {/* ---------------- Summary Section ---------------- */}
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
-        <div className="p-5 bg-white rounded-2xl shadow hover:shadow-lg transition">
-          <div className="flex items-center gap-3">
-            <User className="w-6 h-6 text-green-500" />
-            <p className="font-semibold text-gray-700">Total Students</p>
+        {[
+          { label: "Total Students", icon: User, value: summary.totalStudents, color: "green" },
+          { label: "Total Sessions", icon: CalendarDays, value: summary.totalSessions, color: "blue" },
+          { label: "Total Present", icon: CheckCircle, value: summary.totalPresent, color: "green" },
+          { label: "Total Absent", icon: XCircle, value: summary.totalAbsent, color: "red" },
+          { label: "Average Attendance", icon: Clock, value: `${overallAttendancePercent}%`, color: "purple" },
+        ].map(({ label, icon: Icon, value, color }, idx) => (
+          <div key={idx} className="p-6 bg-white rounded-3xl shadow-lg hover:shadow-xl transition">
+            <div className="flex items-center gap-3">
+              <Icon className={`w-6 h-6 text-${color}-500`} />
+              <p className="font-semibold text-slate-700">{label}</p>
+            </div>
+            <p className="text-2xl font-bold text-slate-900 mt-2">{value}</p>
           </div>
-          <p className="text-2xl font-bold text-gray-900 mt-2">{summary.totalStudents}</p>
-        </div>
-
-        <div className="p-5 bg-white rounded-2xl shadow hover:shadow-lg transition">
-          <div className="flex items-center gap-3">
-            <CalendarDays className="w-6 h-6 text-blue-500" />
-            <p className="font-semibold text-gray-700">Total Sessions</p>
-          </div>
-          <p className="text-2xl font-bold text-gray-900 mt-2">{summary.totalSessions}</p>
-        </div>
-
-        <div className="p-5 bg-white rounded-2xl shadow hover:shadow-lg transition">
-          <div className="flex items-center gap-3">
-            <CheckCircle className="w-6 h-6 text-green-500" />
-            <p className="font-semibold text-gray-700">Total Present</p>
-          </div>
-          <p className="text-2xl font-bold text-gray-900 mt-2">{summary.totalPresent}</p>
-        </div>
-
-        <div className="p-5 bg-white rounded-2xl shadow hover:shadow-lg transition">
-          <div className="flex items-center gap-3">
-            <XCircle className="w-6 h-6 text-red-500" />
-            <p className="font-semibold text-gray-700">Total Absent</p>
-          </div>
-          <p className="text-2xl font-bold text-gray-900 mt-2">{summary.totalAbsent}</p>
-        </div>
-
-        <div className="p-5 bg-white rounded-2xl shadow hover:shadow-lg transition">
-          <div className="flex items-center gap-3">
-            <Clock className="w-6 h-6 text-purple-500" />
-            <p className="font-semibold text-gray-700">Average Attendance</p>
-          </div>
-          <p className="text-2xl font-bold text-gray-900 mt-2">{overallAttendancePercent}%</p>
-        </div>
+        ))}
       </div>
 
       {/* ---------------- Monthly Chart ---------------- */}
       {summary.monthlyChart.length > 0 && (
-        <div className="p-6 bg-white rounded-2xl shadow">
-          <h3 className="text-xl font-bold mb-4">Monthly Attendance</h3>
+        <div className="p-6 bg-white rounded-3xl shadow-lg">
+          <h3 className="text-xl font-bold mb-4 text-slate-800">Monthly Attendance</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={summary.monthlyChart} margin={{ top: 10, right: 30, left: 0, bottom: 5 }}>
@@ -199,8 +167,8 @@ export default function ClassReport({ assignedClasses }: ClassReportProps) {
                 <YAxis />
                 <Tooltip />
                 <Legend />
-                <Bar dataKey="present" name="Present" fill="#22c55e" radius={[4,4,0,0]} />
-                <Bar dataKey="absent" name="Absent" fill="#ef4444" radius={[4,4,0,0]} />
+                <Bar dataKey="present" name="Present" fill="#22c55e" radius={[8,8,0,0]} />
+                <Bar dataKey="absent" name="Absent" fill="#ef4444" radius={[8,8,0,0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -208,58 +176,62 @@ export default function ClassReport({ assignedClasses }: ClassReportProps) {
       )}
 
       {/* ---------------- Per-Class Reports ---------------- */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {assignedClasses.map(cls => {
-          const report = attendanceData[cls.id];
-          const attendancePercent = report ? ((report.present / (report.total * report.sessions)) * 100).toFixed(2) : "0";
+      {assignedClasses.length === 0 ? (
+        <p className="text-slate-500">No classes assigned.</p>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {assignedClasses.map(cls => {
+            const report = attendanceData[cls.id];
+            const attendancePercent = report ? ((report.present / (report.total * report.sessions)) * 100).toFixed(2) : "0";
 
-          return (
-            <div key={cls.id} className="p-6 bg-white rounded-2xl shadow hover:shadow-lg transition space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xl font-bold text-gray-800">{cls.class_name} - {cls.block}</h3>
-                <span className="inline-flex items-center gap-1 bg-green-100 text-green-700 text-sm px-3 py-1 rounded-full font-semibold">
-                  {attendancePercent}%
-                </span>
+            return (
+              <div key={cls.id} className="p-6 bg-white rounded-3xl shadow-lg hover:shadow-xl transition space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xl font-bold text-slate-800">{cls.class_name} - {cls.block}</h3>
+                  <span className="inline-flex items-center gap-1 bg-green-100 text-green-700 text-sm px-3 py-1 rounded-full font-semibold">
+                    {attendancePercent}%
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 text-slate-600 text-sm">
+                  <div className="flex items-center gap-2">
+                    <User className="w-5 h-5 text-slate-400" /> Total Students: {report?.total ?? "-"}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CalendarDays className="w-5 h-5 text-slate-400" /> Sessions Held: {report?.sessions ?? "-"}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="w-5 h-5 text-green-400" /> Present: {report?.present ?? "-"}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <XCircle className="w-5 h-5 text-red-400" /> Absent: {report?.absent ?? "-"}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-purple-400" /> Average Attendance: {attendancePercent}%
+                  </div>
+                </div>
+
+                {report?.chart?.length ? (
+                  <div className="h-48 mt-4">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={report.chart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                        <XAxis dataKey="date" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="present" name="Present" fill="#22c55e" radius={[8,8,0,0]} />
+                        <Bar dataKey="absent" name="Absent" fill="#ef4444" radius={[8,8,0,0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <p className="text-slate-400 mt-2">No attendance data yet.</p>
+                )}
               </div>
-
-              <div className="grid grid-cols-2 gap-4 text-gray-600 text-sm">
-                <div className="flex items-center gap-2">
-                  <User className="w-5 h-5 text-gray-400" /> Total Students: {report?.total ?? "-"}
-                </div>
-                <div className="flex items-center gap-2">
-                  <CalendarDays className="w-5 h-5 text-gray-400" /> Sessions Held: {report?.sessions ?? "-"}
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5 text-green-400" /> Present: {report?.present ?? "-"}
-                </div>
-                <div className="flex items-center gap-2">
-                  <XCircle className="w-5 h-5 text-red-400" /> Absent: {report?.absent ?? "-"}
-                </div>
-                <div className="flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-purple-400" /> Average Attendance: {attendancePercent}%
-                </div>
-              </div>
-
-              {report?.chart?.length ? (
-                <div className="h-48 mt-4">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={report.chart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                      <XAxis dataKey="date" />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Bar dataKey="present" name="Present" fill="#22c55e" radius={[4,4,0,0]} />
-                      <Bar dataKey="absent" name="Absent" fill="#ef4444" radius={[4,4,0,0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <p className="text-gray-400 mt-2">No attendance data yet.</p>
-              )}
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
+import { X, Eye, EyeOff, User, Lock } from "lucide-react";
 
 interface Department { id: string; name: string; }
 interface Course { id: string; name: string; department_id: string; }
@@ -23,8 +24,14 @@ export default function StudentProfile({ userId }: StudentProfileProps) {
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [editModal, setEditModal] = useState(false);
+  const [editStudent, setEditStudent] = useState<Student | null>(null);
+
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [passwordLoading, setPasswordLoading] = useState(false);
 
   const router = useRouter();
@@ -84,7 +91,7 @@ export default function StudentProfile({ userId }: StudentProfileProps) {
   }, []);
 
   // ---------------------------
-  // Fetch courses
+  // Fetch courses based on department
   // ---------------------------
   useEffect(() => {
     if (!student?.department_id) { setCourses([]); return; }
@@ -103,31 +110,38 @@ export default function StudentProfile({ userId }: StudentProfileProps) {
     fetchCourses();
   }, [student?.department_id]);
 
+  // ---------------------------
+  // Handlers
+  // ---------------------------
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    if (!student) return;
-    setStudent({ ...student, [e.target.name]: e.target.value });
+    if (!editStudent) return;
+    setEditStudent({ ...editStudent, [e.target.name]: e.target.value });
   };
 
   const handleSave = async () => {
-    if (!student) return;
-    setLoading(true); setError(null);
+    if (!editStudent) return;
+    setLoading(true);
     try {
       const { error } = await supabase
         .from("students")
         .update({
-          first_name: student.first_name,
-          last_name: student.last_name,
-          department_id: student.department_id,
-          course_id: student.course_id,
-          year_level: student.year_level,
+          first_name: editStudent.first_name,
+          last_name: editStudent.last_name,
+          department_id: editStudent.department_id,
+          course_id: editStudent.course_id,
+          year_level: editStudent.year_level,
         })
-        .eq("id", student.id);
+        .eq("id", editStudent.id);
       if (error) throw error;
+      setStudent(editStudent);
+      setEditModal(false);
       alert("Profile updated successfully!");
     } catch (err: any) {
       console.error(err);
       alert("Error saving profile: " + (err.message || err));
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleChangePassword = async () => {
@@ -147,134 +161,98 @@ export default function StudentProfile({ userId }: StudentProfileProps) {
     } finally { setPasswordLoading(false); }
   };
 
+  const openEditModal = () => {
+    setEditStudent(student);
+    setEditModal(true);
+  };
+  const closeEditModal = () => setEditModal(false);
+
+  // ---------------------------
+  // Render
+  // ---------------------------
   return (
     <div className="min-h-screen bg-white flex justify-center py-16 px-6">
-      <div className="w-full max-w-2xl bg-blue-50 shadow-2xl rounded-3xl p-12 space-y-12">
-        <h2 className="text-3xl font-extrabold text-center text-blue-900">Student Profile</h2>
-
+      <div className="w-full max-w-3xl space-y-8">
         {loading && !student ? (
-          <p className="text-center text-blue-900 font-medium">Loading...</p>
+          <p className="text-center text-indigo-900 font-medium">Loading...</p>
         ) : error ? (
-          <p className="text-center text-red-700 font-medium">{error}</p>
+          <p className="text-center text-red-600 font-medium">{error}</p>
         ) : student ? (
           <>
-            <div className="space-y-6">
-
-              {/* Name Fields */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-blue-700 font-medium mb-1">First Name</label>
-                  <input
-                    name="first_name"
-                    value={student.first_name || ""}
-                    onChange={handleChange}
-                    className="w-full p-4 border border-blue-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 text-blue-900 font-medium"
-                  />
+            {/* ---------- Profile Card ---------- */}
+            <div className="bg-white rounded-3xl shadow-xl p-8 space-y-4 border-l-4 border-indigo-600">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-900 font-bold text-xl">
+                    {student.first_name[0]}{student.last_name[0]}
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-indigo-900">
+                      {student.first_name} {student.last_name}
+                    </div>
+                    <div className="text-sm text-indigo-900">{student.email}</div>
+                    <div className="mt-1 text-sm text-indigo-900">
+                      Department: <span className="font-semibold">{departments.find(d => d.id === student.department_id)?.name || "-"}</span>
+                    </div>
+                    <div className="mt-1 text-sm text-indigo-900">
+                      Course: <span className="font-semibold">{courses.find(c => c.id === student.course_id)?.name || "-"}</span>
+                    </div>
+                    <div className="mt-1 text-sm text-indigo-900">
+                      Year Level: <span className="font-semibold">{student.year_level || "-"}</span>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-blue-700 font-medium mb-1">Last Name</label>
-                  <input
-                    name="last_name"
-                    value={student.last_name || ""}
-                    onChange={handleChange}
-                    className="w-full p-4 border border-blue-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 text-blue-900 font-medium"
-                  />
-                </div>
-              </div>
-
-              {/* Email */}
-              <div>
-                <label className="block text-blue-700 font-medium mb-1">Email</label>
-                <input
-                  name="email"
-                  value={student.email}
-                  disabled
-                  className="w-full p-4 border border-blue-300 rounded-xl bg-blue-100 text-blue-900 cursor-not-allowed font-medium"
-                />
-              </div>
-
-              {/* Department */}
-              <div>
-                <label className="block text-blue-700 font-medium mb-1">Department</label>
-                <select
-                  name="department_id"
-                  value={student.department_id || ""}
-                  onChange={handleChange}
-                  className="w-full p-4 border border-blue-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 text-blue-900 font-medium"
+                <button
+                  onClick={openEditModal}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 shadow-lg transition"
                 >
-                  <option value="" disabled>Select Department</option>
-                  {departments.map((d) => (<option key={d.id} value={d.id}>{d.name}</option>))}
-                </select>
+                  <User className="w-4 h-4" /> Edit Profile
+                </button>
               </div>
-
-              {/* Course */}
-              {courses.length > 0 && (
-                <div>
-                  <label className="block text-blue-700 font-medium mb-1">Course</label>
-                  <select
-                    name="course_id"
-                    value={student.course_id || ""}
-                    onChange={handleChange}
-                    className="w-full p-4 border border-blue-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 text-blue-900 font-medium"
-                  >
-                    <option value="" disabled>Select Course</option>
-                    {courses.map((c) => (<option key={c.id} value={c.id}>{c.name}</option>))}
-                  </select>
-                </div>
-              )}
-
-              {/* Year Level */}
-              <div>
-                <label className="block text-blue-700 font-medium mb-1">Year Level</label>
-                <select
-                  name="year_level"
-                  value={student.year_level || ""}
-                  onChange={handleChange}
-                  className="w-full p-4 border border-blue-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 text-blue-900 font-medium"
-                >
-                  <option value="" disabled>Select Year Level</option>
-                  {["1st Year", "2nd Year", "3rd Year", "4th Year"].map(y => (
-                    <option key={y} value={y}>{y}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Save Button */}
-              <button
-                onClick={handleSave}
-                disabled={loading}
-                className="w-full bg-blue-700 text-white py-4 rounded-2xl font-bold hover:bg-blue-800 transition"
-              >
-                {loading ? "Saving..." : "Save Profile"}
-              </button>
             </div>
 
-            {/* Change Password Section */}
-            <div className="mt-12 space-y-6 border-t border-blue-300 pt-8">
-              <h3 className="text-2xl font-bold text-center text-green-900">Change Password</h3>
+            {/* ---------- Change Password ---------- */}
+            <div className="bg-white rounded-3xl shadow-xl p-8 space-y-6 border-l-4 border-green-600">
+              <h3 className="text-xl font-bold text-green-900 flex items-center gap-2">
+                <Lock className="w-5 h-5 text-green-600" /> Change Password
+              </h3>
               <div className="space-y-4">
-                <div>
-                  <label className="block text-green-700 font-medium mb-1">New Password</label>
+                <div className="relative">
+                  <label className="text-sm font-bold text-green-900">New Password</label>
                   <input
-                    type="password"
+                    type={showNewPassword ? "text" : "password"}
                     value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    className="w-full p-4 border border-green-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-600 text-green-900 font-medium"
+                    onChange={e => setNewPassword(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-green-500 text-green-900 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-green-600"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    className="absolute right-3 top-9 text-green-700 hover:text-green-900"
+                  >
+                    {showNewPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-green-700 font-medium mb-1">Confirm Password</label>
+                <div className="relative">
+                  <label className="text-sm font-bold text-green-900">Confirm Password</label>
                   <input
-                    type="password"
+                    type={showConfirmPassword ? "text" : "password"}
                     value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full p-4 border border-green-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-600 text-green-900 font-medium"
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-green-500 text-green-900 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-green-600"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-9 text-green-700 hover:text-green-900"
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
                 </div>
                 <button
                   onClick={handleChangePassword}
                   disabled={passwordLoading}
-                  className="w-full bg-green-700 text-white py-4 rounded-2xl font-bold hover:bg-green-800 transition"
+                  className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition"
                 >
                   {passwordLoading ? "Updating..." : "Update Password"}
                 </button>
@@ -282,6 +260,86 @@ export default function StudentProfile({ userId }: StudentProfileProps) {
             </div>
           </>
         ) : null}
+
+        {/* ---------- Edit Modal ---------- */}
+        {editModal && editStudent && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={closeEditModal} />
+            <div className="relative w-full max-w-xl bg-white rounded-2xl border border-indigo-300 p-6 sm:p-8 overflow-y-auto max-h-[95vh] shadow-xl">
+              <div className="flex items-start justify-between mb-6">
+                <h2 className="text-2xl font-bold text-indigo-900 flex items-center gap-2">
+                  <User className="w-6 h-6 text-indigo-600" /> Edit Profile
+                </h2>
+                <button onClick={closeEditModal} className="h-9 w-9 rounded-xl flex items-center justify-center hover:bg-indigo-100">
+                  <X className="w-5 h-5 text-indigo-700" />
+                </button>
+              </div>
+              <form className="space-y-6" onSubmit={e => { e.preventDefault(); handleSave(); }}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-bold text-indigo-900">First Name</label>
+                    <input
+                      name="first_name"
+                      value={editStudent.first_name || ""}
+                      onChange={handleChange}
+                      className="mt-1 w-full rounded-xl border border-indigo-500 text-indigo-900 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-bold text-indigo-900">Last Name</label>
+                    <input
+                      name="last_name"
+                      value={editStudent.last_name || ""}
+                      onChange={handleChange}
+                      className="mt-1 w-full rounded-xl border border-indigo-500 text-indigo-900 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-bold text-indigo-900">Department</label>
+                  <select
+                    name="department_id"
+                    value={editStudent.department_id || ""}
+                    onChange={handleChange}
+                    className="mt-1 w-full rounded-xl border border-indigo-500 text-indigo-900 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                  >
+                    <option value="">Select Department</option>
+                    {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                </div>
+                {courses.length > 0 && (
+                  <div>
+                    <label className="text-sm font-bold text-indigo-900">Course</label>
+                    <select
+                      name="course_id"
+                      value={editStudent.course_id || ""}
+                      onChange={handleChange}
+                      className="mt-1 w-full rounded-xl border border-indigo-500 text-indigo-900 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                    >
+                      <option value="">Select Course</option>
+                      {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                )}
+                <div>
+                  <label className="text-sm font-bold text-indigo-900">Year Level</label>
+                  <select
+                    name="year_level"
+                    value={editStudent.year_level || ""}
+                    onChange={handleChange}
+                    className="mt-1 w-full rounded-xl border border-indigo-500 text-indigo-900 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                  >
+                    <option value="">Select Year Level</option>
+                    {["1st Year", "2nd Year", "3rd Year", "4th Year"].map(y => <option key={y} value={y}>{y}</option>)}
+                  </select>
+                </div>
+                <button type="submit" className="w-full py-3 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 transition">
+                  Save Changes
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
