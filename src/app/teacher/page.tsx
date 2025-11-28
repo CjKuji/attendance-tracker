@@ -9,8 +9,7 @@ import StudentAttendance from "./components/StudentAttendance";
 import TeacherProfile from "./components/TeacherProfile";
 import AttendanceChatbot from "./components/AttendanceChatbot";
 import { 
-  HomeIcon, ClipboardDocumentCheckIcon, UserGroupIcon, UserCircleIcon, ArrowLeftOnRectangleIcon, PlusCircleIcon,
-  Bars3Icon, XMarkIcon
+  HomeIcon, ClipboardDocumentCheckIcon, UserGroupIcon, UserCircleIcon, ArrowLeftOnRectangleIcon, PlusCircleIcon 
 } from "@heroicons/react/24/outline";
 
 interface StudentRecord {
@@ -40,7 +39,6 @@ export default function TeacherDashboard() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("Dashboard");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [assignedClasses, setAssignedClasses] = useState<ClassRecord[]>([]);
   const [studentsByClass, setStudentsByClass] = useState<Record<string, StudentRecord[]>>({});
@@ -61,26 +59,6 @@ export default function TeacherDashboard() {
     };
     checkAuth();
   }, [router]);
-
-  // --------------------------
-  // FETCH FINISHED CLASSES FOR TODAY
-  // --------------------------
-  useEffect(() => {
-    if (!user) return;
-    const fetchFinishedClasses = async () => {
-      const today = new Date().toISOString().split("T")[0];
-      const { data, error } = await supabase
-        .from("attendance_sessions")
-        .select("class_id")
-        .eq("session_date", today)
-        .eq("status", "Ended");
-
-      if (!error && data) {
-        setFinishedClasses(data.map(d => d.class_id));
-      }
-    };
-    fetchFinishedClasses();
-  }, [user]);
 
   // --------------------------
   // FETCH TEACHER CLASSES
@@ -108,7 +86,9 @@ export default function TeacherDashboard() {
       )
       .subscribe();
 
-    return () => supabase.removeChannel(channel);
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user]);
 
   // --------------------------
@@ -180,10 +160,6 @@ export default function TeacherDashboard() {
     if (fetchError) return console.error("Error fetching session:", fetchError);
 
     if (session) {
-      if (session.status === "Ended") {
-        alert("Today's session already ended.");
-        return;
-      }
       setActiveAttendanceClass(classId);
       setActiveSessionId(session.id);
       return;
@@ -196,7 +172,6 @@ export default function TeacherDashboard() {
         session_date: today,
         created_by: user.id,
         started_at: new Date().toISOString(),
-        status: "Ongoing",
       }])
       .select()
       .maybeSingle();
@@ -223,11 +198,11 @@ export default function TeacherDashboard() {
       status: s.status === "Present" ? "Present" : "Absent",
     }));
 
-    await supabase.from("attendance").upsert(payload, { onConflict: ["student_id", "class_id", "session_id"] });
+    await supabase.from("attendance").insert(payload);
 
     await supabase
       .from("attendance_sessions")
-      .update({ ended_at: new Date().toISOString(), status: "Ended" })
+      .update({ ended_at: new Date().toISOString() })
       .eq("id", activeSessionId);
 
     setFinishedClasses(prev => [...prev, classId]);
@@ -243,11 +218,8 @@ export default function TeacherDashboard() {
     router.push("/login");
   };
 
-  if (loading) return <div className="h-screen flex items-center justify-center text-blue-600 font-bold">Loading...</div>;
+  if (loading) return <div className="h-screen flex items-center justify-center text-gray-500">Loading...</div>;
 
-  // --------------------------
-  // NAV ITEMS
-  // --------------------------
   const navItems: { name: Tab; icon: JSX.Element }[] = [
     { name: "Dashboard", icon: <HomeIcon className="w-5 h-5" /> },
     { name: "Reports", icon: <ClipboardDocumentCheckIcon className="w-5 h-5" /> },
@@ -267,7 +239,8 @@ export default function TeacherDashboard() {
 
   const getClassStatus = (cls: ClassRecord) => {
     const todayDay = new Date().toLocaleString("en-US", { weekday: "long" });
-    if (finishedClasses.includes(cls.id)) return "Done";
+    const finished = finishedClasses.includes(cls.id);
+    if (finished) return "Done";
     if (cls.day_of_week === todayDay) return "Ongoing";
     return "Upcoming";
   };
@@ -275,68 +248,58 @@ export default function TeacherDashboard() {
   const isButtonDisabled = (cls: ClassRecord) => {
     const now = new Date();
     const todayDay = now.toLocaleString("en-US", { weekday: "long" });
-    if (finishedClasses.includes(cls.id)) return true;
+    const finished = finishedClasses.includes(cls.id);
+    if (finished) return true;
+
     if (cls.day_of_week.toLowerCase() !== todayDay.toLowerCase()) return true;
 
     const [startHour, startMinute] = cls.start_time.split(":").map(Number);
     const [endHour, endMinute] = cls.end_time.split(":").map(Number);
+
     const classStart = new Date(now);
     classStart.setHours(startHour, startMinute, 0, 0);
+
     const classEnd = new Date(now);
     classEnd.setHours(endHour, endMinute, 0, 0);
+
     if (classEnd <= classStart) classEnd.setDate(classEnd.getDate() + 1);
 
     const bufferMs = 5 * 60 * 1000;
     return now.getTime() < classStart.getTime() - bufferMs || now.getTime() > classEnd.getTime();
   };
 
-  // --------------------------
-  // RENDER
-  // --------------------------
   return (
-    <div className="flex h-screen bg-white text-gray-900 overflow-hidden">
-
-      {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 w-64 bg-blue-700 text-white z-50 transform transition-transform duration-300 ease-in-out
-        ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 md:relative md:translate-x-0 flex-shrink-0`}>
-        <div className="flex flex-col justify-between h-full p-6">
-          <div>
-            <h1 className="text-3xl font-extrabold text-center mb-8">Teacher Panel</h1>
-            <nav className="flex flex-col gap-3">
-              {navItems.map(tab => (
-                <button
-                  key={tab.name}
-                  onClick={() => { setActiveTab(tab.name); setSidebarOpen(false); }}
-                  className={`p-3 flex items-center gap-3 rounded-xl font-medium transition ${activeTab === tab.name ? "bg-blue-900" : "hover:bg-blue-600"}`}
-                >
-                  {tab.icon} {tab.name}
-                </button>
-              ))}
-            </nav>
-          </div>
-          <button onClick={handleLogout} className="w-full py-3 bg-red-600 hover:bg-red-700 rounded-xl flex items-center justify-center gap-2 font-bold">
-            <ArrowLeftOnRectangleIcon className="w-5 h-5" /> Logout
-          </button>
+    <div className="flex h-screen bg-gray-50 text-gray-800 overflow-hidden">
+      {/* SIDEBAR */}
+      <aside className="w-64 bg-white shadow-xl p-6 flex flex-col justify-between border-r">
+        <div>
+          <h1 className="text-3xl font-extrabold text-green-700 text-center mb-8">Teacher Panel</h1>
+          <nav className="flex flex-col gap-3">
+            {navItems.map(tab => (
+              <button
+                key={tab.name}
+                onClick={() => setActiveTab(tab.name)}
+                className={`p-3 flex items-center gap-3 rounded-xl font-medium transition ${activeTab === tab.name ? "bg-green-100 text-green-700" : "hover:bg-gray-100"}`}
+              >
+                {tab.icon} {tab.name}
+              </button>
+            ))}
+          </nav>
         </div>
+        <button onClick={handleLogout} className="w-full py-3 bg-red-50 text-red-700 rounded-xl hover:bg-red-100 font-bold flex items-center justify-center gap-2">
+          <ArrowLeftOnRectangleIcon className="w-5 h-5" /> Logout
+        </button>
       </aside>
 
-      {/* Hamburger */}
-      <div className="md:hidden fixed top-4 left-4 z-50">
-        <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 rounded-md bg-white shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-          {sidebarOpen ? <XMarkIcon className="w-6 h-6 text-blue-700" /> : <Bars3Icon className="w-6 h-6 text-blue-700" />}
-        </button>
-      </div>
-
-      {sidebarOpen && <div className="fixed inset-0 bg-black/30 z-40 md:hidden" onClick={() => setSidebarOpen(false)} />}
-
+      {/* MAIN */}
       <main className="flex-1 overflow-y-auto p-6 space-y-6">
         {activeTab === "Dashboard" && (
           <>
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-3xl font-bold text-blue-900">Welcome, {user?.email}</h2>
+              <h2 className="text-3xl font-bold">Welcome, {user?.email}</h2>
               <button
                 onClick={() => setShowAddClassModal(true)}
-                className="px-4 py-2 bg-yellow-500 text-white rounded-xl hover:bg-yellow-600 flex items-center gap-2"
+                className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center gap-2"
               >
                 <PlusCircleIcon className="w-5 h-5" /> Add Class
               </button>
@@ -350,7 +313,7 @@ export default function TeacherDashboard() {
               />
             )}
 
-            <p className="text-blue-800 mb-6 font-medium">Manage today's attendance.</p>
+            <p className="text-gray-600 mb-6">Manage today's attendance.</p>
 
             {!activeAttendanceClass ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 mt-6">
@@ -363,24 +326,38 @@ export default function TeacherDashboard() {
                   return (
                     <div
                       key={cls.id}
-                      className={`relative p-6 rounded-2xl shadow transition ${finished ? "opacity-80 pointer-events-none" : "hover:shadow-lg"} bg-white`}
+                      className={`p-6 bg-white rounded-2xl shadow hover:shadow-lg transition relative ${
+                        finished ? "opacity-60 pointer-events-none" : ""
+                      }`}
                     >
-                      {/* Finished Badge */}
-                      {finished && (
-                        <div className="absolute top-0 right-0 transform rotate-45 translate-x-1/4 -translate-y-1/4 bg-red-500 text-white font-bold text-xs px-4 py-1 shadow-lg">
-                          ✔ Finished
-                        </div>
+                      <span
+                        className={`absolute top-2 right-2 text-sm px-2 py-1 rounded ${
+                          finished ? "bg-green-600 text-white" :
+                          status === "Ongoing" ? "bg-yellow-400 text-black" :
+                          "bg-gray-300 text-gray-700"
+                        }`}
+                      >
+                        {finished ? "Finished Class" : status}
+                      </span>
+
+                      <h3 className="text-xl font-bold">{cls.class_name}</h3>
+                      <p className="text-gray-600">
+                        {cls.block} • {cls.day_of_week} • {formatTime12Hour(cls.start_time)} - {formatTime12Hour(cls.end_time)}
+                      </p>
+
+                      {status === "Ongoing" && (
+                        <p className="mt-4 text-gray-700 font-medium">
+                          Students: {students.length}
+                        </p>
                       )}
-
-                      <h3 className="text-xl font-bold text-blue-900">{cls.class_name}</h3>
-                      <p className="text-blue-800">{cls.block} • {cls.day_of_week} • {formatTime12Hour(cls.start_time)} - {formatTime12Hour(cls.end_time)}</p>
-
-                      {status === "Ongoing" && <p className="mt-4 text-blue-900 font-medium">Students: {students.length}</p>}
 
                       <button
                         onClick={() => startAttendance(cls.id)}
                         disabled={disabled || finished}
-                        className={`mt-4 w-full px-4 py-2 rounded-xl font-bold transition ${disabled || finished ? "bg-gray-300 text-gray-700 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700"}`}
+                        title={`Start class at ${formatTime12Hour(cls.start_time)}`}
+                        className={`mt-4 w-full px-4 py-2 rounded-xl font-bold transition ${
+                          disabled || finished ? "bg-gray-300 text-gray-700 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700"
+                        }`}
                       >
                         Start Attendance
                       </button>
@@ -390,12 +367,12 @@ export default function TeacherDashboard() {
               </div>
             ) : (
               <div className="bg-white p-6 rounded-2xl shadow">
-                <button onClick={() => setActiveAttendanceClass(null)} className="mb-4 px-4 py-2 bg-gray-100 rounded hover:bg-gray-200 flex items-center gap-1">
+                <button onClick={() => setActiveAttendanceClass(null)} className="mb-4 px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 flex items-center gap-1">
                   <ArrowLeftOnRectangleIcon className="w-4 h-4" /> Back
                 </button>
-                <h3 className="text-2xl font-bold mb-4 text-blue-900">Attendance – {assignedClasses.find(c => c.id === activeAttendanceClass)?.class_name}</h3>
+                <h3 className="text-2xl font-bold mb-4">Attendance – {assignedClasses.find(c => c.id === activeAttendanceClass)?.class_name}</h3>
                 <table className="w-full border-collapse text-sm">
-                  <thead className="bg-blue-100">
+                  <thead className="bg-gray-100">
                     <tr>
                       <th className="border px-4 py-2 text-left">Student</th>
                       <th className="border px-4 py-2 text-left">Department</th>
@@ -406,13 +383,13 @@ export default function TeacherDashboard() {
                   <tbody>
                     {studentsByClass[activeAttendanceClass]?.map(student => (
                       <tr key={student.id}>
-                        <td className="border px-4 py-2 text-blue-900">{student.first_name} {student.last_name}</td>
-                        <td className="border px-4 py-2 text-blue-800">{student.department}</td>
-                        <td className="border px-4 py-2 text-blue-800">{student.course}</td>
+                        <td className="border px-4 py-2">{student.first_name} {student.last_name}</td>
+                        <td className="border px-4 py-2">{student.department}</td>
+                        <td className="border px-4 py-2">{student.course}</td>
                         <td className="border px-4 py-2">
                           <button
                             onClick={() => markPresent(activeAttendanceClass, student.id)}
-                            className={`px-3 py-1 rounded text-white ${student.status === "Present" ? "bg-yellow-500 shadow-md" : "bg-blue-500 hover:bg-blue-600"}`}
+                            className={`px-3 py-1 rounded text-white ${student.status === "Present" ? "bg-green-500" : "bg-blue-500 hover:bg-blue-600"}`}
                           >
                             {student.status === "Present" ? "Present" : "Mark Present"}
                           </button>
